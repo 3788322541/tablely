@@ -7,8 +7,11 @@
     不在这里挑选字段，避免与契约分叉。
   · `moneyFormat` 取 `shop.money_format` —— **与表格里 `{{ v.price | money }}` 同一个格式串**，
     保证 JS 算出的合计与列里显示的价格同源同口径（§16.6「显示达标却被拦」风险）。
-  · 文案在 Liquid 侧取（7 语由主题 locale 提供），占位符统一替换成 `{name}` 形式再交给 JS；
-    这样 JS 不需要内置任何自然语言，新增语种只改 `locales/*.json`（§20.1）。
+  · 文案在 Liquid 侧取（7 语由主题 locale 提供），**占位符保持 locale 原样的 `{{ n }}`**，
+    由 JS 在渲染时替换；这样 JS 不需要内置任何自然语言，新增语种只改 `locales/*.json`（§20.1）。
+    ⚠️ **不可在这里用 `| t: n: '{n}'` 之类做二次替换** —— Liquid 的输出语句里出现字面 `{` `}`
+    会让解析器提前截断（报 `Variable ... was not properly terminated with regexp: /\}\}/`），
+    实测由 `shopify app deploy --no-release` 的 theme check 捕获（M5）。
   · 路由取 `routes.*` 而**不硬编码** `/cart/add`：多语言店铺路径带语言前缀（M4 已定）。
   · `assets/tablely.js` 只做**渐进增强**：无 JS 时表格仍能通过原生表单加购（§五）。
   · 体积硬约束：本扩展的 JS 打包后 gzip ≤ 15 KB（P2），由 CI 断言（scripts/check-bundle.ts）。
@@ -26,17 +29,17 @@
       "cartUrl": {{ routes.cart_url | json }},
       "strings": {
         "added": {{ 'feedback.added' | t | json }},
-        "partial": {{ 'feedback.partial' | t: ok: '{ok}', fail: '{fail}' | json }},
-        "lowStock": {{ 'feedback.lowStock' | t: n: '{n}' | json }},
-        "belowMin": {{ 'feedback.belowMin' | t: n: '{n}' | json }},
-        "aboveMax": {{ 'feedback.aboveMax' | t: n: '{n}' | json }},
-        "wrongStep": {{ 'feedback.wrongStep' | t: n: '{n}' | json }},
+        "partial": {{ 'feedback.partial' | t | json }},
+        "lowStock": {{ 'feedback.lowStock' | t | json }},
+        "belowMin": {{ 'feedback.belowMin' | t | json }},
+        "aboveMax": {{ 'feedback.aboveMax' | t | json }},
+        "wrongStep": {{ 'feedback.wrongStep' | t | json }},
         "soldOut": {{ 'feedback.soldOut' | t | json }},
         "error": {{ 'feedback.error' | t | json }},
-        "summary": {{ 'table.summary' | t: rows: '{rows}', units: '{units}', total: '{total}' | json }},
-        "orderMinLabel": {{ 'orderMin.label' | t: amount: '{amount}' | json }},
-        "orderMinProgress": {{ 'orderMin.progress' | t: current: '{current}', min: '{min}' | json }},
-        "orderMinNotMet": {{ 'orderMin.notMet' | t: amount: '{amount}' | json }}
+        "summary": {{ 'table.summary' | t | json }},
+        "orderMinLabel": {{ 'orderMin.label' | t | json }},
+        "orderMinProgress": {{ 'orderMin.progress' | t | json }},
+        "orderMinNotMet": {{ 'orderMin.notMet' | t | json }}
       }
     }
   {%- else -%}

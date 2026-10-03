@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 type RowError = { key: string; vars?: Record<string, string | number> } | null;
 
 type Runtime = {
+    makeT: (dict: Record<string, string>) => (key: string, vars?: Record<string, unknown>) => string;
     formatMoney: (cents: number, format?: string) => string;
     toCents: (value: unknown) => number | null;
     rowError: (row: unknown) => RowError;
@@ -86,7 +87,46 @@ function fakeForm(attrs: Record<string, string>, rows: unknown[]) {
 }
 
 /* ------------------------------------------------------------------ *
- * ① 金额格式化：与主题 `| money` 同口径（§16.6）
+ * ① 文案插值：`{{ name }}` 占位符（Liquid 只做 `| t | json`，替换在 JS）
+ * ------------------------------------------------------------------ */
+
+describe("makeT（locale 占位符替换）", () => {
+    // 主题 locale 用的是 `{{ n }}`（带空格），M5 曾因 Liquid 侧做参数替换而 theme check 报错
+    const dict = {
+        added: "Added",
+        lowStock: "Only {{ n }} left in stock",
+        summary: "Selected {{ rows }} rows · {{ units }} units · Est. {{ total }}",
+        noVars: "Out of stock",
+    };
+
+    it("替换 locale 原样的双花括号占位符（含多参数与空格）", () => {
+        const t = runtime.makeT(dict);
+        expect(t("lowStock", { n: 3 })).toBe("Only 3 left in stock");
+        expect(t("summary", { rows: 2, units: 7, total: "$120.00" })).toBe(
+            "Selected 2 rows · 7 units · Est. $120.00",
+        );
+    });
+
+    it("无占位符 / 未传变量 / 未知 key 都安全", () => {
+        const t = runtime.makeT(dict);
+        expect(t("noVars")).toBe("Out of stock");
+        expect(t("lowStock")).toBe("Only {{ n }} left in stock");
+        expect(t("missing", { n: 1 })).toBe("");
+    });
+
+    it("未提供的变量保持原样（不产生 undefined）", () => {
+        const t = runtime.makeT(dict);
+        expect(t("lowStock", { other: 1 })).toBe("Only {{ n }} left in stock");
+    });
+
+    it("兼容单花括号 `{n}`（旧约定，避免旧文案静默失效）", () => {
+        const t = runtime.makeT({ legacy: "Max {n}" });
+        expect(t("legacy", { n: 9 })).toBe("Max 9");
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ * ② 金额格式化：与主题 `| money` 同口径（§16.6）
  * ------------------------------------------------------------------ */
 
 describe("formatMoney（与主题 money_format 同口径）", () => {
@@ -138,7 +178,7 @@ describe("toCents（阈值字符串 → 分）", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ② 行级校验（§五 反馈规则第 5 条 / 第 4 条）
+ * ③ 行级校验（§五 反馈规则第 5 条 / 第 4 条）
  * ------------------------------------------------------------------ */
 
 describe("rowError（提交前拦截，含失败原因）", () => {
@@ -199,7 +239,7 @@ describe("rowError（提交前拦截，含失败原因）", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ③ 步进器（§五 反馈规则第 1 条 / B14 键盘可达）
+ * ④ 步进器（§五 反馈规则第 1 条 / B14 键盘可达）
  * ------------------------------------------------------------------ */
 
 describe("nextQuantity（− / + 步进）", () => {
@@ -235,7 +275,7 @@ describe("nextQuantity（− / + 步进）", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * ④ 合计与 Y14 闸门口径（§16.6：折前小计 = 显示单价 × 数量）
+ * ⑤ 合计与 Y14 闸门口径（§16.6：折前小计 = 显示单价 × 数量）
  * ------------------------------------------------------------------ */
 
 describe("computeTotals（合计：行数 / 件数 / 折前小计）", () => {
