@@ -1,8 +1,12 @@
 name: Deploy
 
+# ⚠️ CD 尚未启用（§十一 M15 才做「CD 部署脚本与迁移自动执行、回滚演练」）。
+# 现在只保留手动触发，避免每次 push main 都去连一台还没建好 /srv/tablely 的服务器。
+# M15 时把下面的 push: branches [main] 打开，并在仓库 secrets 里配好
+# SSH_HOST / SSH_USER / SSH_KEY（服务器 env 只存服务器，不进仓库）。
 on:
-  push:
-    branches: [main]
+  # push:
+  #   branches: [main]
   workflow_dispatch:
 
 jobs:

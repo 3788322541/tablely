@@ -6,7 +6,7 @@ name: CI
 #   e2e      —— 只跑里程碑标记（v* tag）/ 夜间 / 手动；Playwright 在 M5 引入
 #
 # ⚠️ 与 deploy.yml 的分工：本文件只做「门禁」，不负责部署。
-#    部署由 deploy.yml 在 push main 后走 SSH + 共享 edge 层（§九）。
+#    部署（SSH + 共享 edge 层，§九）在 deploy.yml，按 §十一 M15 才接入自动触发。
 
 on:
   pull_request:
