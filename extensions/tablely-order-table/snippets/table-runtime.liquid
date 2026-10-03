@@ -1,10 +1,15 @@
 {% comment %}
-  Tablely 运行时：样式 + 脚本 + 店铺配置（App Block 专用；仅在「确认渲染」时被引入）。
+  Tablely 运行时：样式 + 脚本 + 店铺配置与文案（App Block 专用；仅在「确认渲染」时被引入）。
 
   · 配置缺失时输出 `null` —— 裸空会得到 `window.TABLELY_CONFIG = ;` 的 JS 语法错误
     （Linkly / Cartly 已踩过该坑）。
-  · 配置内容 = Shop 级 `tablely.settings` 的原始契约（M5 的 JS 用它做整单起订金额闸门、
-    缺货策略、反馈样式等），不在这里挑选字段，避免与契约分叉。
+  · `settings` = Shop 级 `tablely.settings` 的原始契约（M5 的 JS 用它做缺货策略等判断），
+    不在这里挑选字段，避免与契约分叉。
+  · `moneyFormat` 取 `shop.money_format` —— **与表格里 `{{ v.price | money }}` 同一个格式串**，
+    保证 JS 算出的合计与列里显示的价格同源同口径（§16.6「显示达标却被拦」风险）。
+  · 文案在 Liquid 侧取（7 语由主题 locale 提供），占位符统一替换成 `{name}` 形式再交给 JS；
+    这样 JS 不需要内置任何自然语言，新增语种只改 `locales/*.json`（§20.1）。
+  · 路由取 `routes.*` 而**不硬编码** `/cart/add`：多语言店铺路径带语言前缀（M4 已定）。
   · `assets/tablely.js` 只做**渐进增强**：无 JS 时表格仍能通过原生表单加购（§五）。
   · 体积硬约束：本扩展的 JS 打包后 gzip ≤ 15 KB（P2），由 CI 断言（scripts/check-bundle.ts）。
 {% endcomment %}
@@ -14,7 +19,26 @@
 
 <script type="application/json" id="tablely-config">
   {%- if tly_settings -%}
-    {{- tly_settings | json -}}
+    {
+      "settings": {{ tly_settings | json }},
+      "moneyFormat": {{ shop.money_format | json }},
+      "cartAddUrl": {{ routes.cart_add_url | json }},
+      "cartUrl": {{ routes.cart_url | json }},
+      "strings": {
+        "added": {{ 'feedback.added' | t | json }},
+        "partial": {{ 'feedback.partial' | t: ok: '{ok}', fail: '{fail}' | json }},
+        "lowStock": {{ 'feedback.lowStock' | t: n: '{n}' | json }},
+        "belowMin": {{ 'feedback.belowMin' | t: n: '{n}' | json }},
+        "aboveMax": {{ 'feedback.aboveMax' | t: n: '{n}' | json }},
+        "wrongStep": {{ 'feedback.wrongStep' | t: n: '{n}' | json }},
+        "soldOut": {{ 'feedback.soldOut' | t | json }},
+        "error": {{ 'feedback.error' | t | json }},
+        "summary": {{ 'table.summary' | t: rows: '{rows}', units: '{units}', total: '{total}' | json }},
+        "orderMinLabel": {{ 'orderMin.label' | t: amount: '{amount}' | json }},
+        "orderMinProgress": {{ 'orderMin.progress' | t: current: '{current}', min: '{min}' | json }},
+        "orderMinNotMet": {{ 'orderMin.notMet' | t: amount: '{amount}' | json }}
+      }
+    }
   {%- else -%}
     null
   {%- endif -%}

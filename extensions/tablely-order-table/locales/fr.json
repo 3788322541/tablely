@@ -6,13 +6,29 @@
             "product": "Produit",
             "price": "Prix",
             "stock": "Stock",
-            "qty": "Quantité"
+            "qty": "Quantité",
+            "action": "Ajouter"
         },
         "addAll": "Tout ajouter au panier",
         "moq": "Min. {{ n }}",
-        "step": "Pas {{ n }}"
+        "step": "Pas {{ n }}",
+        "summary": "Sélection : {{ rows }} lignes · {{ units }} unités · Est. {{ total }}",
+        "decrease": "Diminuer la quantité",
+        "increase": "Augmenter la quantité"
     },
     "feedback": {
-        "soldOut": "En rupture de stock"
+        "added": "Ajouté",
+        "partial": "{{ ok }} ajoutés, {{ fail }} échoués",
+        "lowStock": "Il ne reste que {{ n }}",
+        "belowMin": "Minimum : {{ n }}",
+        "aboveMax": "Maximum : {{ n }}",
+        "wrongStep": "Multiple de {{ n }} requis",
+        "soldOut": "En rupture de stock",
+        "error": "Impossible d'ajouter au panier. Veuillez réessayer."
+    },
+    "orderMin": {
+        "label": "Minimum de commande : {{ amount }}",
+        "progress": "Actuel {{ current }} / minimum {{ min }}",
+        "notMet": "Ajoutez {{ amount }} pour atteindre le minimum"
     }
 }

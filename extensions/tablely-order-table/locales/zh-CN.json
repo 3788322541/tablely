@@ -6,13 +6,29 @@
             "product": "商品",
             "price": "单价",
             "stock": "库存",
-            "qty": "数量"
+            "qty": "数量",
+            "action": "加购"
         },
         "addAll": "全部加入购物车",
         "moq": "起订 {{ n }}",
-        "step": "步长 {{ n }}"
+        "step": "步长 {{ n }}",
+        "summary": "已选 {{ rows }} 行 · {{ units }} 件 · 预估 {{ total }}",
+        "decrease": "减少数量",
+        "increase": "增加数量"
     },
     "feedback": {
-        "soldOut": "暂时缺货"
+        "added": "已加入",
+        "partial": "已加入 {{ ok }} 行，{{ fail }} 行失败",
+        "lowStock": "库存仅剩 {{ n }} 件",
+        "belowMin": "起订量为 {{ n }}",
+        "aboveMax": "上限为 {{ n }}",
+        "wrongStep": "必须是 {{ n }} 的倍数",
+        "soldOut": "暂时缺货",
+        "error": "加购失败，请重试。"
+    },
+    "orderMin": {
+        "label": "起订金额：{{ amount }}",
+        "progress": "当前 {{ current }} / 起订 {{ min }}",
+        "notMet": "还差 {{ amount }} 达到起订金额"
     }
 }

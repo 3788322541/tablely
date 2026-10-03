@@ -1,79 +1,87 @@
 /**
- * Tablely — 店面订购表样式（M4：表格布局）
+ * Tablely — 店面订购表样式（M4：表格布局；M5：步进器 / 反馈 / 合计 / 起订金额）
  *
  * 设计底线（§五 可访问性 / §2.3 兼容）：
- *   · **不写 `!important`**，不硬编码颜色与字体：前景色一律从 `currentColor` 派生，
+ *   · **不写 `!important`**，不硬编码字体：前景色一律从 `currentColor` 派生，
  *     字体尺寸一律用 `em` 跟随主题，故浅色 / 深色 / 大字号主题都自动适配；
- *   · 不用纯颜色表达状态：缺货行同时给文字（`feedback.soldOut`）+ 置灰；
+ *   · 不用纯颜色表达状态：缺货行同时给文字（`feedback.soldOut`）+ 置灰，
+ *     失败原因同时给文字 + 加粗（`#d72c0d` 只是与 `currentColor` 混合的强调色，
+ *     深色主题下会随 `currentColor` 自动提亮，不作为唯一标识）；
  *   · `:focus-visible` 用 `currentColor` 派生描边，键盘可达（B14）；
  *   · 窄屏靠 `.tablely-scroll` 横向滚动，表格结构（表头）始终保留；
- *   · 分隔线与浅底用 `color-mix`（带纯 `currentColor` 兜底声明，老浏览器优雅降级）。
+ *   · 分隔线与浅底用 `color-mix`（带纯 `currentColor` 兜底声明，老浏览器优雅降级）；
+ *   · **JS 依赖的部件（步进器 / 行内按钮 / 列 / 合计 / 起订金额）在
+ *     `data-tablely-ready="true"` 之前一律不显示** —— 无 JS 时退回纯原生多行表单，
+ *     不留点不动的死按钮（§五「无 JS 兜底」）。
  *
  * 类名与 `snippets/table-markup.liquid` 成对维护；CSS 变量是唯一的样式真源，
- * M5/M6 的 JS 只切 `data-tablely-layout` 等属性，不内联样式。
+ * M5 的 JS 只切 `data-tablely-ready` / `data-tablely-invalid` / `data-tablely-flash`
+ * 等属性，不内联样式。
  */
 
 .tablely-root {
-  /* 兜底声明在前，color-mix 在后：不支持时自动退回纯 currentColor */
-  --tablely-line: currentColor;
-  --tablely-line: color-mix(in srgb, currentColor 22%, transparent);
-  --tablely-line-soft: currentColor;
-  --tablely-line-soft: color-mix(in srgb, currentColor 12%, transparent);
-  --tablely-tint: currentColor;
-  --tablely-tint: color-mix(in srgb, currentColor 6%, transparent);
-  --tablely-radius: 6px;
+    /* 兜底声明在前，color-mix 在后：不支持时自动退回纯 currentColor */
+    --tablely-line: currentColor;
+    --tablely-line: color-mix(in srgb, currentColor 22%, transparent);
+    --tablely-line-soft: currentColor;
+    --tablely-line-soft: color-mix(in srgb, currentColor 12%, transparent);
+    --tablely-tint: currentColor;
+    --tablely-tint: color-mix(in srgb, currentColor 6%, transparent);
+    --tablely-danger: currentColor;
+    --tablely-danger: color-mix(in srgb, #d72c0d 72%, currentColor);
+    --tablely-radius: 6px;
 
-  color: inherit;
-  font-size: inherit;
-  line-height: 1.4;
-  margin: 1em 0;
+    color: inherit;
+    font-size: inherit;
+    line-height: 1.4;
+    margin: 1em 0;
 }
 
 /* ------------------------------ 标题 ------------------------------ */
 
 .tablely-heading {
-  caption-side: top;
-  text-align: start;
-  font-size: 1.05em;
-  font-weight: 600;
-  padding: 0 0 0.6em;
-  color: inherit;
+    caption-side: top;
+    text-align: start;
+    font-size: 1.05em;
+    font-weight: 600;
+    padding: 0 0 0.6em;
+    color: inherit;
 }
 
 /* ------------------------------ 滚动容器 ------------------------------ */
 
 .tablely-scroll {
-  width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 /* ------------------------------ 表格 ------------------------------ */
 
 .tablely-table {
-  width: 100%;
-  border-collapse: collapse;
-  border-spacing: 0;
-  font-size: 0.95em;
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 0.95em;
 }
 
 .tablely-table th,
 .tablely-table td {
-  padding: 0.6em 0.5em;
-  border-bottom: 1px solid var(--tablely-line-soft);
-  vertical-align: middle;
-  text-align: start;
+    padding: 0.6em 0.5em;
+    border-bottom: 1px solid var(--tablely-line-soft);
+    vertical-align: middle;
+    text-align: start;
 }
 
 .tablely-table thead th {
-  border-bottom: 1px solid var(--tablely-line);
-  font-weight: 600;
-  white-space: nowrap;
+    border-bottom: 1px solid var(--tablely-line);
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .tablely-table tbody tr:last-child th,
 .tablely-table tbody tr:last-child td {
-  border-bottom: 0;
+    border-bottom: 0;
 }
 
 /* 数字列右对齐，便于上下对比（数量列由输入框自身撑开） */
@@ -81,78 +89,156 @@
 .tablely-cell-price,
 .tablely-th-stock,
 .tablely-cell-stock {
-  text-align: end;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+    text-align: end;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 .tablely-th-qty,
 .tablely-cell-qty {
-  text-align: end;
-  white-space: nowrap;
-  width: 1%;
+    text-align: end;
+    white-space: nowrap;
+    width: 1%;
+}
+
+/* 行内加购列：纯 JS 部件，就绪前整列不显示（无 JS 时不出现死按钮） */
+.tablely-th-action,
+.tablely-cell-action {
+    display: none;
+    text-align: end;
+    white-space: nowrap;
+    width: 1%;
 }
 
 /* ------------------------------ 商品列 ------------------------------ */
 
 .tablely-product {
-  display: flex;
-  align-items: center;
-  gap: 0.7em;
-  min-width: 12em;
+    display: flex;
+    align-items: center;
+    gap: 0.7em;
+    min-width: 12em;
 }
 
 .tablely-thumb {
-  width: 48px;
-  height: 48px;
-  flex: 0 0 auto;
-  object-fit: cover;
-  border-radius: var(--tablely-radius);
-  background: var(--tablely-tint);
+    width: 48px;
+    height: 48px;
+    flex: 0 0 auto;
+    object-fit: cover;
+    border-radius: var(--tablely-radius);
+    background: var(--tablely-tint);
 }
 
 .tablely-product-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15em;
-  min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15em;
+    min-width: 0;
 }
 
 .tablely-title {
-  font-weight: 500;
-  overflow-wrap: anywhere;
+    font-weight: 500;
+    overflow-wrap: anywhere;
 }
 
 .tablely-sku,
 .tablely-vid,
 .tablely-hint,
 .tablely-soldout {
-  font-size: 0.82em;
-  opacity: 0.75;
+    font-size: 0.82em;
+    opacity: 0.75;
 }
 
 .tablely-soldout {
-  opacity: 1;
-  font-weight: 500;
+    opacity: 1;
+    font-weight: 500;
 }
 
-/* ------------------------------ 数量输入 ------------------------------ */
+/* 行内失败原因（§五 规则 3 / 8）：文字 + 加粗 + 强调色，三重标识 */
+.tablely-row-msg {
+    font-size: 0.82em;
+    font-weight: 600;
+    color: var(--tablely-danger);
+}
+
+/* 空文案不占位（避免每行都留一条空白气泡 —— 参考图里的典型缺陷） */
+.tablely-row-msg:empty {
+    display: none;
+}
+
+/* ------------------------------ 数量步进器 ------------------------------ */
+
+.tablely-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+}
+
+.tablely-step {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.9em;
+    min-height: 1.9em;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    line-height: 1;
+    color: inherit;
+    background: var(--tablely-tint);
+    border: 1px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
+    cursor: pointer;
+}
+
+.tablely-step:hover:not(:disabled) {
+    background: var(--tablely-line-soft);
+}
 
 .tablely-qty {
-  width: 5.5em;
-  padding: 0.4em 0.5em;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  text-align: end;
-  color: inherit;
-  background: transparent;
-  border: 1px solid var(--tablely-line);
-  border-radius: var(--tablely-radius);
+    width: 5.5em;
+    padding: 0.4em 0.5em;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
 }
 
-.tablely-qty:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.tablely-qty:disabled,
+.tablely-step:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* ------------------------------ 行内加购按钮 ------------------------------ */
+
+.tablely-add {
+    display: none;
+    font: inherit;
+    font-size: 0.85em;
+    font-weight: 600;
+    padding: 0.4em 0.8em;
+    white-space: nowrap;
+    color: inherit;
+    background: var(--tablely-tint);
+    border: 1px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
+    cursor: pointer;
+}
+
+.tablely-add:hover:not(:disabled) {
+    background: var(--tablely-line-soft);
+}
+
+.tablely-add[data-tablely-flash='true'] {
+    font-weight: 700;
+    background: var(--tablely-line-soft);
+}
+
+.tablely-add-none {
+    opacity: 0.6;
 }
 
 /* ------------------------------ 缺货行 ------------------------------ */
@@ -160,55 +246,147 @@
 .tablely-row--soldout .tablely-title,
 .tablely-row--soldout .tablely-cell-price,
 .tablely-row--soldout .tablely-cell-stock {
-  opacity: 0.55;
+    opacity: 0.55;
 }
 
-/* ------------------------------ 底部操作 ------------------------------ */
+/* ------------------------------ 顶部反馈（§五 规则 1-3） ------------------------------ */
+
+.tablely-feedback {
+    margin-bottom: 0.7em;
+    padding: 0.5em 0.7em;
+    font-size: 0.9em;
+    font-weight: 500;
+    color: inherit;
+    background: var(--tablely-tint);
+    border: 1px solid var(--tablely-line-soft);
+    border-inline-start: 3px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
+    overflow-wrap: anywhere;
+}
+
+.tablely-feedback--error {
+    color: var(--tablely-danger);
+    border-inline-start-color: var(--tablely-danger);
+}
+
+/* 我们的规则给 .tablely-feedback 设了 display，必须显式让 [hidden] 生效 */
+.tablely-feedback[hidden] {
+    display: none;
+}
+
+/* ------------------------------ 合计与起订金额 ------------------------------ */
 
 .tablely-footer {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 0.9em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.7em;
+    margin-top: 0.9em;
+}
+
+/* 合计 / 起订金额均为 JS 实时计算：就绪前不显示，避免无 JS 时给出错误的静态数字 */
+.tablely-summary {
+    display: none;
+    flex-direction: column;
+    gap: 0.15em;
+    font-size: 0.9em;
+    font-variant-numeric: tabular-nums;
+}
+
+.tablely-summary-text {
+    font-weight: 600;
+}
+
+.tablely-ordermin {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    opacity: 0.85;
+}
+
+.tablely-ordermin-msg {
+    font-weight: 600;
+    color: var(--tablely-danger);
+}
+
+.tablely-ordermin-msg:empty {
+    display: none;
 }
 
 .tablely-submit {
-  font: inherit;
-  font-weight: 600;
-  padding: 0.6em 1.4em;
-  color: inherit;
-  background: var(--tablely-tint);
-  border: 1px solid currentColor;
-  border-radius: var(--tablely-radius);
-  cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0.6em 1.4em;
+    color: inherit;
+    background: var(--tablely-tint);
+    border: 1px solid currentColor;
+    border-radius: var(--tablely-radius);
+    cursor: pointer;
 }
 
-.tablely-submit:hover {
-  background: var(--tablely-line-soft);
+.tablely-submit:hover:not(:disabled) {
+    background: var(--tablely-line-soft);
+}
+
+.tablely-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.tablely-form[data-tablely-busy='true'] .tablely-submit {
+    cursor: progress;
 }
 
 /* ------------------------------ 焦点可见（B14） ------------------------------ */
 
 .tablely-qty:focus-visible,
+.tablely-step:focus-visible,
+.tablely-add:focus-visible,
 .tablely-submit:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+/* ------------------------------ JS 就绪开关 ------------------------------ */
+
+[data-tablely-ready='true'] .tablely-step {
+    display: inline-flex;
+}
+
+[data-tablely-ready='true'] .tablely-add {
+    display: inline-block;
+}
+
+[data-tablely-ready='true'] .tablely-th-action,
+[data-tablely-ready='true'] .tablely-cell-action {
+    display: table-cell;
+}
+
+[data-tablely-ready='true'] .tablely-summary {
+    display: flex;
 }
 
 /* ------------------------------ 窄屏 ------------------------------ */
 
 @media screen and (max-width: 600px) {
-  .tablely-table th,
-  .tablely-table td {
-    padding: 0.5em 0.4em;
-  }
 
-  .tablely-thumb {
-    width: 40px;
-    height: 40px;
-  }
+    .tablely-table th,
+    .tablely-table td {
+        padding: 0.5em 0.4em;
+    }
 
-  .tablely-product {
-    gap: 0.5em;
-    min-width: 9em;
-  }
+    .tablely-thumb {
+        width: 40px;
+        height: 40px;
+    }
+
+    .tablely-product {
+        gap: 0.5em;
+        min-width: 9em;
+    }
+
+    .tablely-qty {
+        width: 4em;
+    }
 }
