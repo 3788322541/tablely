@@ -1,0 +1,18 @@
+{
+    "name": "Tablely Bestellformular",
+    "table": {
+        "heading": "Bestellformular",
+        "col": {
+            "product": "Produkt",
+            "price": "Preis",
+            "stock": "Bestand",
+            "qty": "Menge"
+        },
+        "addAll": "Alle in den Warenkorb",
+        "moq": "Mind. {{ n }}",
+        "step": "Schritt {{ n }}"
+    },
+    "feedback": {
+        "soldOut": "Ausverkauft"
+    }
+}

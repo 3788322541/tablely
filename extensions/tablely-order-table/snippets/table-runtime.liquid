@@ -1,0 +1,21 @@
+{% comment %}
+  Tablely 运行时：样式 + 脚本 + 店铺配置（App Block 专用；仅在「确认渲染」时被引入）。
+
+  · 配置缺失时输出 `null` —— 裸空会得到 `window.TABLELY_CONFIG = ;` 的 JS 语法错误
+    （Linkly / Cartly 已踩过该坑）。
+  · 配置内容 = Shop 级 `tablely.settings` 的原始契约（M5 的 JS 用它做整单起订金额闸门、
+    缺货策略、反馈样式等），不在这里挑选字段，避免与契约分叉。
+  · `assets/tablely.js` 只做**渐进增强**：无 JS 时表格仍能通过原生表单加购（§五）。
+  · 体积硬约束：本扩展的 JS 打包后 gzip ≤ 15 KB（P2），由 CI 断言（scripts/check-bundle.ts）。
+{% endcomment %}
+
+{{ 'tablely.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'tablely.js' | asset_url }}" defer></script>
+
+<script type="application/json" id="tablely-config">
+  {%- if tly_settings -%}
+    {{- tly_settings | json -}}
+  {%- else -%}
+    null
+  {%- endif -%}
+</script>

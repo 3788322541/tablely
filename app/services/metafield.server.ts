@@ -1,22 +1,231 @@
 /**
- * Tablely 配置下发（metafield）
+ * Tablely 渲染契约（metafield）—— 唯一生成处（§2.7 / §五）
  *
- * 商品级 → **app-owned** metafield（写入 namespace `$app:tablely` / key `table`）
- *   写入时 namespace 写 `$app:tablely`，Admin API 回读与 Liquid 侧看到的是
- *   `app--<app_id>--tablely`（与 Linkly 的 `$app:linkly` 同一机制）。
- *   §2.7：`tablely.table` 在**商家于 Tables 页保存该商品时**写入。
+ * 两份 metafield，**owner 类型不同**：
+ *   ① Shop 级    namespace `tablely` / key `settings`，owner = **Shop**
+ *   ② Product 级 namespace `tablely` / key `table`，owner = **Product**
  *
- * 店铺级 → app-data metafield（namespace `tablely` / key `settings`）
- *   由 Design 页（M8）/ afterAuth 播种写入，M3 不涉及（`orderMinAmount` 的店铺级
- *   默认值在 M3 只落 DB，随后由 M4 的渲染契约统一序列化下发）。
+ * ⚠️ **namespace 用 plain `tablely`（不是 `$app:tablely`）** —— 这是 M0 在 dev 店的实测结论：
+ *   两份 metafield 必须配套建 `metafieldDefinition` 且 `access.storefront = PUBLIC_READ`，
+ *   店面 Liquid 才能用 `shop.metafields.tablely.settings` / `product.metafields.tablely.table`
+ *   读到值；否则读到的是 `nil`（应用/商家私有 metafield 默认对店面不可见）。
+ *   故安装流程的顺序是「**建定义 → 再写值 → 渲染兜底**」（见 `ensureMetafieldDefinitions`）。
  *
- * 契约（§五）：**不含价格与库存**（A1）——`rows[]` 里只有配置类的
- * `min / max / step / tiers`，价格与库存由主题 Liquid 从 `variant` 实时读。
- * 金额一律用十进制**字符串**（`wholesale.price` 同一口径），避免浮点误差。
+ * ⚠️ **不含价格与库存（A1）** —— `rows[]` 只有配置类的 `min / max / step / tiers / wholesale`；
+ *   价格与库存一律由主题 Liquid 从 `variant` 对象实时读（`variant.price` /
+ *   `variant.inventory_quantity` / `variant.available`）。契约里**不得出现** `price` /
+ *   `priceIncl` / `stock`（§十二 验收 12）。
  *
- * ⚠️ M4 会把本文件扩成完整的渲染契约（含 Shop 级 `settings` 与 matrix /
- * hideNative 等字段）；M3 只落 Product 级 `table` 所需的字段，形状与 §五 契约对齐。
+ * 金额一律用十进制**字符串**（`"1000.00"`），避免浮点误差。
  */
+
+/* ================================ 常量 ================================ */
+
+/** metafield namespace（两份 metafield 共用；**不是** `$app:` 前缀，见文件头说明） */
+export const NAMESPACE = "tablely";
+export const TABLE_KEY = "table";
+export const SETTINGS_KEY = "settings";
+
+/** 布局取值（§五；Product 级 `layout` 为 `null` 时继承 Shop 级 `defaultLayout`） */
+export const LAYOUTS = ["table", "grid", "list", "matrix"] as const;
+export type Layout = (typeof LAYOUTS)[number];
+export const DEFAULT_LAYOUT: Layout = "table";
+
+/** 列开关的默认值（§五；Shop 级给默认，Product 级按需覆写） */
+export const COLUMN_KEYS = ["image", "sku", "id", "price", "stock"] as const;
+export type ColumnKey = (typeof COLUMN_KEYS)[number];
+export type ColumnFlags = Record<ColumnKey, boolean>;
+export const DEFAULT_COLUMNS: ColumnFlags = {
+    image: true,
+    sku: true,
+    id: false,
+    price: true,
+    stock: true,
+};
+
+/** 含税显示（`incl` / `excl`，§五 taxDisplay） */
+export const TAX_DISPLAYS = ["incl", "excl"] as const;
+/** 缺货策略（§五 outOfStock；`hide` / `backorder` 的实现在 M7） */
+export const OUT_OF_STOCK_MODES = ["gray", "hide", "backorder"] as const;
+/** 门控模式（§五 gate；Liquid 侧按 `customer.tags` 实时比对，M10 落地） */
+export const GATE_MODES = ["off", "hide_price", "hide_table"] as const;
+/** 阶梯价模型（§2.2：A = 百分比 / B = 固定单价；M12 落地） */
+export const TIER_MODELS = ["percent", "fixed"] as const;
+
+/** B1 隐藏主题自带加购区的内置选择器（商家可在 Design 页覆写，M8） */
+export const DEFAULT_NATIVE_SELECTOR = 'form[action*="/cart/add"]';
+
+/* ============================== 契约类型 ============================== */
+
+/** 档位（§五 `rows[].tiers`；B6 的 `defaultTiers` 由 M12 展开进各变体，Liquid 只认这里） */
+export type TierEntry = { qty: number; price: string };
+
+/** 批发价（§五 `rows[].wholesale`；B5 一个变体可挂多组，M10/M12 落值） */
+export type WholesaleEntry = { group: string; price: string };
+
+/** Product 级 `table` metafield 的一行（**每行字段结构必须一致**；不含 price / stock） */
+export type TableContractRow = {
+    /** 纯数字变体 ID（与 Liquid 的 `variant.id` 对齐） */
+    vid: string;
+    sku: string | null;
+    title: string;
+    min: number;
+    max: number | null;
+    step: number;
+    tiers: TierEntry[];
+    wholesale: WholesaleEntry[];
+};
+
+/** 矩阵布局的坐标（§五 `matrix`；M6 落值，缺失的格子由「`cells` 里没有对应项」表达） */
+export type MatrixContract = {
+    xAxis: string;
+    yAxis: string;
+    cells: { x: number; y: number; vid: string }[];
+};
+
+/** Product 级 `table` metafield 契约 v2（§五 ②） */
+export type ProductTableContract = {
+    v: 2;
+    enabled: boolean;
+    /** 覆写全局布局；`null` = 继承 Shop 级 `defaultLayout` */
+    layout: Layout | null;
+    /** 列开关覆写（只带商家改过的键；Liquid 按「默认 → Shop → Product」合并） */
+    columns: Partial<ColumnFlags>;
+    /**
+     * Y14 整单起订金额覆写：十进制字符串（如 `"1000.00"`）；
+     * `null` = 继承 Shop 级默认（两者都为 null 即不限）。
+     * ⚠️ 留空必须落 `null`，**不可写 `"0"`**——`0` 与「不限」语义完全不同。
+     */
+    orderMinAmount: string | null;
+    rows: TableContractRow[];
+    /** 矩阵布局坐标；M4 恒为 `null`（M6 生成） */
+    matrix: MatrixContract | null;
+};
+
+/** Shop 级 `settings` metafield 契约 v2（§五 ①） */
+export type ShopSettingsContract = {
+    v: 2;
+    defaultLayout: Layout;
+    columns: ColumnFlags;
+    taxDisplay: (typeof TAX_DISPLAYS)[number];
+    /** 门控模式 + 合格客户标签（静态 metafield 不存「某位顾客是否可见」） */
+    gate: { mode: (typeof GATE_MODES)[number]; tags: string[] };
+    outOfStock: (typeof OUT_OF_STOCK_MODES)[number];
+    /** Y14：店铺级默认整单起订金额（字符串 / `null` = 不限）；商品可覆写 */
+    orderMinAmount: string | null;
+    tierModel: (typeof TIER_MODELS)[number];
+    tierEnabled: boolean;
+    /** B1：隐藏主题自带加购区（默认关闭） */
+    hideNative: { enabled: boolean; selector: string };
+};
+
+/** 序列化 Shop 级契约所需的 DB 行（结构性类型，避免把 Prisma 拖进单测） */
+export type ShopSettingsRowLike = {
+    defaultLayout: string;
+    columns: unknown;
+    taxDisplay: string;
+    outOfStockMode: string;
+    gateMode: string;
+    gateTags: string[];
+    tierModel: string;
+    tierEnabled: boolean;
+    hideNative: boolean;
+    nativeSelector: string | null;
+    orderMinAmount: unknown;
+};
+
+/* ============================== 纯函数 ============================== */
+
+/** 白名单归一化：命中则用原值，否则退回 fallback（避免脏值进店面契约） */
+function pick<T extends string>(
+    allowed: readonly T[],
+    value: unknown,
+    fallback: T,
+): T {
+    return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
+/** Decimal → 十进制字符串（`null` / 非法保持 `null`；0 也要如实输出 `"0.00"`） */
+export function formatAmount(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "string") return value.trim() === "" ? null : value;
+    if (typeof value === "object" && typeof (value as { toFixed?: unknown }).toFixed === "function") {
+        return (value as { toFixed: (digits: number) => string }).toFixed(2);
+    }
+    return null;
+}
+
+/**
+ * 列开关归一化：以 `DEFAULT_COLUMNS` 为底，只接受显式的布尔值覆写。
+ *
+ * 支持多份来源依次合并（默认 → Shop 级 → Product 级），后写的赢。
+ */
+export function mergeColumns(...sources: unknown[]): ColumnFlags {
+    const result: ColumnFlags = { ...DEFAULT_COLUMNS };
+    for (const source of sources) {
+        if (!source || typeof source !== "object") continue;
+        for (const key of COLUMN_KEYS) {
+            const value = (source as Record<string, unknown>)[key];
+            if (typeof value === "boolean") result[key] = value;
+        }
+    }
+    return result;
+}
+
+/** 布局归一化：`null` = 继承 Shop 级；非法值一律退回 `null`（不写脏值进契约） */
+export function normalizeLayout(value: unknown): Layout | null {
+    if (value === null || value === undefined || value === "") return null;
+    return LAYOUTS.includes(value as Layout) ? (value as Layout) : null;
+}
+
+/** 只保留显式布尔值（写进 Product 级契约的「覆写」形态，不把默认值抄进来） */
+export function pickColumnOverrides(source: unknown): Partial<ColumnFlags> {
+    const result: Partial<ColumnFlags> = {};
+    if (!source || typeof source !== "object") return result;
+    for (const key of COLUMN_KEYS) {
+        const value = (source as Record<string, unknown>)[key];
+        if (typeof value === "boolean") result[key] = value;
+    }
+    return result;
+}
+
+/** DB 行 → Shop 级契约（**唯一生成处**；Design 页保存与 afterAuth 播种共用） */
+export function toShopSettingsContract(
+    row: ShopSettingsRowLike,
+): ShopSettingsContract {
+    const selector = (row.nativeSelector ?? "").trim();
+    return {
+        v: 2,
+        defaultLayout: pick(LAYOUTS, row.defaultLayout, DEFAULT_LAYOUT),
+        columns: mergeColumns(row.columns),
+        taxDisplay: pick(TAX_DISPLAYS, row.taxDisplay, "incl"),
+        gate: {
+            mode: pick(GATE_MODES, row.gateMode, "off"),
+            // 标签去重去空：门控比对是精确匹配，留着空串会把「无标签顾客」误放行
+            tags: [...new Set((row.gateTags ?? []).map((tag) => tag.trim()).filter(Boolean))],
+        },
+        outOfStock: pick(OUT_OF_STOCK_MODES, row.outOfStockMode, "gray"),
+        orderMinAmount: formatAmount(row.orderMinAmount),
+        tierModel: pick(TIER_MODELS, row.tierModel, "percent"),
+        tierEnabled: Boolean(row.tierEnabled),
+        hideNative: {
+            enabled: Boolean(row.hideNative),
+            selector: selector || DEFAULT_NATIVE_SELECTOR,
+        },
+    };
+}
+
+/** 构建 Shop 级 `settings` metafield 的 JSON 值（**唯一生成处**） */
+export function buildShopSettingsValue(contract: ShopSettingsContract): string {
+    return JSON.stringify(contract);
+}
+
+/** 构建 Product 级 `table` metafield 的 JSON 值（**唯一生成处**） */
+export function buildProductTableValue(contract: ProductTableContract): string {
+    return JSON.stringify(contract);
+}
+
+/* ============================== 写 metafield ============================== */
 
 export type GraphqlAdmin = {
     graphql: (
@@ -24,10 +233,6 @@ export type GraphqlAdmin = {
         options?: { variables?: Record<string, unknown> },
     ) => Promise<Response>;
 };
-
-/** 商品级 app-owned metafield（写入用 `$app:` 前缀，回读是 `app--<id>--tablely`） */
-export const APP_OWNED_NAMESPACE = "$app:tablely";
-export const TABLE_KEY = "table";
 
 const SET_METAFIELDS_MUTATION = `#graphql
   mutation TablelySetMetafields($metafields: [MetafieldsSetInput!]!) {
@@ -69,77 +274,77 @@ function assertNoGraphqlErrors(json: unknown, context: string) {
     }
 }
 
-/** 商品级 `table` metafield 的一行（§五 契约；**不含** price / stock） */
-export type TableContractRow = {
-    /** 纯数字变体 ID（与 Liquid 的 `variant.id` 对齐） */
-    vid: string;
-    sku: string | null;
-    title: string;
-    min: number;
-    max: number | null;
-    step: number;
-    /** 档位表；M3 不配档位（阶梯价属 M12），恒为 `[]` */
-    tiers: unknown[];
-};
+type UserError = { field?: string[]; message: string; code?: string };
 
-/** 商品级 `table` metafield 契约 v2（§五） */
-export type ProductTableContract = {
-    v: 2;
-    enabled: boolean;
-    /** 覆写全局布局；`null` = 继承 Shop 级默认 */
-    layout: string | null;
-    /** 列开关覆写（M3 不出 UI，保留现状） */
-    columns: Record<string, boolean>;
-    /**
-     * Y14 整单起订金额覆写：十进制字符串（如 `"1000.00"`）；
-     * `null` = 继承 Shop 级默认（两者都为 null 即不限）。
-     * ⚠️ 留空必须落 `null`，**不可写 `"0"`**——`0` 与「不限」语义完全不同。
-     */
-    orderMinAmount: string | null;
-    rows: TableContractRow[];
-};
-
-/** 构建商品级 `table` metafield 的 JSON 值（**唯一生成处**，禁止各处自行拼 JSON） */
-export function buildProductTableValue(contract: ProductTableContract): string {
-    return JSON.stringify(contract);
+function throwOnUserErrors(
+    userErrors: UserError[] | undefined,
+    context: string,
+): void {
+    if (!userErrors?.length) return;
+    throw new Error(
+        `[tablely] ${context}: ${userErrors
+            .map((error) => [...(error.field ?? []), error.message].join(" "))
+            .join("; ")}`,
+    );
 }
 
-/** 写入某个商品的 app-owned metafield；失败必须抛错，不允许静默成功（§六） */
-export async function syncProductTableMetafield(
+/** 写入一份 json metafield（owner 由 `ownerId` 决定：Shop 或 Product） */
+async function setJsonMetafield(
     admin: GraphqlAdmin,
-    productId: string,
-    value: string,
+    input: { ownerId: string; key: string; value: string },
+    context: string,
 ): Promise<void> {
     const res = await admin.graphql(SET_METAFIELDS_MUTATION, {
         variables: {
             metafields: [
                 {
-                    ownerId: productId,
-                    namespace: APP_OWNED_NAMESPACE,
-                    key: TABLE_KEY,
+                    ownerId: input.ownerId,
+                    namespace: NAMESPACE,
+                    key: input.key,
                     type: "json",
-                    value,
+                    value: input.value,
                 },
             ],
         },
     });
 
     const json = await res.json();
-    assertNoGraphqlErrors(json, "syncProductTableMetafield");
-
-    const userErrors =
-        (json as { data?: { metafieldsSet?: { userErrors?: { field?: string[]; message: string }[] } } })
-            ?.data?.metafieldsSet?.userErrors ?? [];
-    if (userErrors.length) {
-        throw new Error(
-            `[tablely] syncProductTableMetafield: ${userErrors
-                .map((error) => [...(error.field ?? []), error.message].join(" "))
-                .join("; ")}`,
-        );
-    }
+    assertNoGraphqlErrors(json, context);
+    throwOnUserErrors(
+        (json as {
+            data?: { metafieldsSet?: { userErrors?: UserError[] } };
+        })?.data?.metafieldsSet?.userErrors,
+        context,
+    );
 }
 
-/** 删除某个商品的 `table` metafield（幂等：不存在时视为已删除） */
+/** 写入 Shop 级 `tablely.settings`（失败必须抛错，不允许静默成功，§六） */
+export async function syncShopSettingsMetafield(
+    admin: GraphqlAdmin,
+    shopId: string,
+    value: string,
+): Promise<void> {
+    await setJsonMetafield(
+        admin,
+        { ownerId: shopId, key: SETTINGS_KEY, value },
+        "syncShopSettingsMetafield",
+    );
+}
+
+/** 写入 Product 级 `tablely.table`（失败必须抛错，不允许静默成功，§六） */
+export async function syncProductTableMetafield(
+    admin: GraphqlAdmin,
+    productId: string,
+    value: string,
+): Promise<void> {
+    await setJsonMetafield(
+        admin,
+        { ownerId: productId, key: TABLE_KEY, value },
+        "syncProductTableMetafield",
+    );
+}
+
+/** 删除某个商品的 `tablely.table`（幂等：不存在时视为已删除） */
 export async function deleteProductTableMetafield(
     admin: GraphqlAdmin,
     productId: string,
@@ -147,26 +352,169 @@ export async function deleteProductTableMetafield(
     const res = await admin.graphql(DELETE_METAFIELDS_MUTATION, {
         variables: {
             metafields: [
-                {
-                    ownerId: productId,
-                    namespace: APP_OWNED_NAMESPACE,
-                    key: TABLE_KEY,
-                },
+                { ownerId: productId, namespace: NAMESPACE, key: TABLE_KEY },
             ],
         },
     });
 
     const json = await res.json();
     assertNoGraphqlErrors(json, "deleteProductTableMetafield");
+    throwOnUserErrors(
+        (json as {
+            data?: { metafieldsDelete?: { userErrors?: UserError[] } };
+        })?.data?.metafieldsDelete?.userErrors,
+        "deleteProductTableMetafield",
+    );
+}
 
-    const userErrors =
-        (json as { data?: { metafieldsDelete?: { userErrors?: { field?: string[]; message: string }[] } } })
-            ?.data?.metafieldsDelete?.userErrors ?? [];
-    if (userErrors.length) {
-        throw new Error(
-            `[tablely] deleteProductTableMetafield: ${userErrors
-                .map((error) => [...(error.field ?? []), error.message].join(" "))
-                .join("; ")}`,
-        );
+/* ============================== 店铺信息 ============================== */
+
+const SHOP_QUERY = `#graphql
+  query TablelyShop {
+    shop {
+      id
+      currencyCode
     }
+  }
+`;
+
+/** 店铺 GID 与本位币（Shop 级 metafield 的 owner、起订金额字段的 suffix） */
+export async function getShopInfo(
+    admin: GraphqlAdmin,
+): Promise<{ id: string; currencyCode: string }> {
+    const res = await admin.graphql(SHOP_QUERY);
+    const json = await res.json();
+    assertNoGraphqlErrors(json, "getShopInfo");
+
+    const shop = (json as { data?: { shop?: { id?: string; currencyCode?: string } } })
+        ?.data?.shop;
+    if (!shop?.id) {
+        throw new Error("[tablely] getShopInfo: 未能取到 shop.id");
+    }
+    return { id: shop.id, currencyCode: shop.currencyCode ?? "USD" };
+}
+
+/* ========================= metafield 定义（店面可见性） ========================= */
+
+const DEFINITIONS_QUERY = `#graphql
+  query TablelyMetafieldDefinitions {
+    shopDefinitions: metafieldDefinitions(
+      ownerType: SHOP
+      namespace: "${NAMESPACE}"
+      first: 20
+    ) {
+      nodes {
+        key
+      }
+    }
+    productDefinitions: metafieldDefinitions(
+      ownerType: PRODUCT
+      namespace: "${NAMESPACE}"
+      first: 20
+    ) {
+      nodes {
+        key
+      }
+    }
+  }
+`;
+
+const CREATE_DEFINITION_MUTATION = `#graphql
+  mutation TablelyCreateMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+    metafieldDefinitionCreate(definition: $definition) {
+      createdDefinition {
+        id
+        namespace
+        key
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+/**
+ * 确保两份 metafield 的**定义**存在且 `access.storefront = PUBLIC_READ`。
+ *
+ * 为什么必须有：店面 Liquid 用 `shop.metafields.tablely.settings` /
+ * `product.metafields.tablely.table` 读值，而私有 metafield 默认对店面不可见 ——
+ * M0 实测「定义建好前读不到、建好后读得到」（文件头硬约束）。
+ *
+ * 幂等：先查后建，已存在的 key 不再创建；`access.admin` 整体省略
+ * （M0 实测该 API 版本不接受 `MERCHANT_READ`，省略即得 `PUBLIC_READ_WRITE`）。
+ *
+ * ⚠️ 调用顺序必须是「本函数 → 再写值」，否则先写的那次在店面读不到。
+ */
+export async function ensureMetafieldDefinitions(
+    admin: GraphqlAdmin,
+): Promise<{ created: string[] }> {
+    const res = await admin.graphql(DEFINITIONS_QUERY);
+    const json = await res.json();
+    assertNoGraphqlErrors(json, "ensureMetafieldDefinitions");
+
+    const data = (json as {
+        data?: {
+            shopDefinitions?: { nodes?: { key: string }[] };
+            productDefinitions?: { nodes?: { key: string }[] };
+        };
+    })?.data;
+    const existingShop = new Set(
+        (data?.shopDefinitions?.nodes ?? []).map((node) => node.key),
+    );
+    const existingProduct = new Set(
+        (data?.productDefinitions?.nodes ?? []).map((node) => node.key),
+    );
+
+    const wanted: {
+        ownerType: "SHOP" | "PRODUCT";
+        key: string;
+        name: string;
+        exists: boolean;
+    }[] = [
+            {
+                ownerType: "SHOP",
+                key: SETTINGS_KEY,
+                name: "Tablely settings",
+                exists: existingShop.has(SETTINGS_KEY),
+            },
+            {
+                ownerType: "PRODUCT",
+                key: TABLE_KEY,
+                name: "Tablely order table",
+                exists: existingProduct.has(TABLE_KEY),
+            },
+        ];
+
+    const created: string[] = [];
+    for (const item of wanted) {
+        if (item.exists) continue;
+        const createRes = await admin.graphql(CREATE_DEFINITION_MUTATION, {
+            variables: {
+                definition: {
+                    name: item.name,
+                    namespace: NAMESPACE,
+                    key: item.key,
+                    type: "json",
+                    ownerType: item.ownerType,
+                    access: { storefront: "PUBLIC_READ" },
+                },
+            },
+        });
+        const createJson = await createRes.json();
+        assertNoGraphqlErrors(createJson, `ensureMetafieldDefinitions(${item.key})`);
+        throwOnUserErrors(
+            (createJson as {
+                data?: {
+                    metafieldDefinitionCreate?: { userErrors?: UserError[] };
+                };
+            })?.data?.metafieldDefinitionCreate?.userErrors,
+            `ensureMetafieldDefinitions(${item.key})`,
+        );
+        created.push(item.key);
+    }
+
+    return { created };
 }

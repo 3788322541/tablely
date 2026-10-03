@@ -1,0 +1,182 @@
+{% comment %}
+  Tablely 订购表 DOM（M4：仅表格布局；网格 / 列表 / 矩阵在 M6 复用同一份数据）
+
+  · 语义化 `<table>` + `<th scope="col">`（B14）；窄屏由 `.tablely-scroll` 横向滚动。
+  · 无 JS 兜底：**单张原生表单** `POST /cart/add`，多行
+    `items[<idx>][id]` + `items[<idx>][quantity]`（`enctype="multipart/form-data"`）。
+  · 索引用**独立计数器 `idx`**，不用 `forloop.index0` —— 变体不存在的行会被跳过，
+    `forloop.index0` 会留下索引空洞，导致 Shopify 解析多行时错位。
+  · 价格 / 库存 / 可售状态**实时读 `variant`**（A1：metafield 里刻意没有这些字段）：
+    `variant.price`（presentment 币种）/ `variant.inventory_quantity` /
+    `variant.available`（由 Shopify 按 inventory_policy 自算）。
+  · 不可售行：置灰 + 禁用（`gray` 策略）；**不渲染隐藏的 `id` 输入**——
+    否则 Shopify 会因「quantity 缺失」把它当 1 件加购（M0 实测）。
+  · 缩略图 `loading="lazy"` + 固定宽高（P3）。
+  · `hideNative` 的 `<style>` 三重守卫：`enabled` + 商品级 `enabled` + 本次确实渲染；
+    选择器做字符清洗且**不含 `!important`**（§2.8 / §十二 验收 14、15）。
+{% endcomment %}
+
+{%- assign tly_rows = tly_tbl.rows -%}
+
+{%- comment %}
+  列开关：默认 → Shop 级 → Product 级（与 app/services/metafield.server.ts 的
+  `mergeColumns` 同序）。**不能用 `| default:`** —— Liquid 的 default 把 `false`
+  视为空值，会把「显式关闭的列」错当成「未设置」。
+{%- endcomment -%}
+{%- assign col_image = true -%}
+{%- assign col_sku = true -%}
+{%- assign col_id = false -%}
+{%- assign col_price = true -%}
+{%- assign col_stock = true -%}
+{%- assign c_shop = tly_settings.columns -%}
+{%- if c_shop.image != nil -%}{%- assign col_image = c_shop.image -%}{%- endif -%}
+{%- if c_shop.sku != nil -%}{%- assign col_sku = c_shop.sku -%}{%- endif -%}
+{%- if c_shop.id != nil -%}{%- assign col_id = c_shop.id -%}{%- endif -%}
+{%- if c_shop.price != nil -%}{%- assign col_price = c_shop.price -%}{%- endif -%}
+{%- if c_shop.stock != nil -%}{%- assign col_stock = c_shop.stock -%}{%- endif -%}
+{%- assign c_prod = tly_tbl.columns -%}
+{%- if c_prod.image != nil -%}{%- assign col_image = c_prod.image -%}{%- endif -%}
+{%- if c_prod.sku != nil -%}{%- assign col_sku = c_prod.sku -%}{%- endif -%}
+{%- if c_prod.id != nil -%}{%- assign col_id = c_prod.id -%}{%- endif -%}
+{%- if c_prod.price != nil -%}{%- assign col_price = c_prod.price -%}{%- endif -%}
+{%- if c_prod.stock != nil -%}{%- assign col_stock = c_prod.stock -%}{%- endif -%}
+
+{%- comment %}
+  B1 隐藏主题自带加购区：三重守卫（本片段只在「已确认渲染」时被引入，故前两条即足够）
+  之外，选择器再清洗掉 `<` `>` `{` `}` `;`（避免商家误填把 `<style>` 撑破），
+  空选择器直接不输出。**不加 `!important`**（§十二 验收 15）。
+{%- endcomment -%}
+{%- assign hide_native = tly_settings.hideNative -%}
+{%- if hide_native.enabled == true and tly_tbl.enabled == true -%}
+  {%- assign hide_sel = hide_native.selector | default: 'form[action*="/cart/add"]' -%}
+  {%- assign hide_sel = hide_sel | replace: '<', '' | replace: '>', '' | replace: '{', '' | replace: '}', '' | replace: ';', '' | strip_newlines | strip -%}
+  {%- if hide_sel != blank -%}
+    <style>
+      {{ hide_sel }} { display: none; }
+    </style>
+  {%- endif -%}
+{%- endif -%}
+
+{%- comment %}
+  提交目标用 `routes.cart_add_url` 而不是硬编码 `/cart/add`：
+  多语言店铺的店面路径带语言前缀（如 `/fr/cart/add`），硬编码会把顾客带到错误的语言版本
+  （theme check 的 HardcodedRoutes 也正是因此报警）。
+{%- endcomment -%}
+<form
+  class="tablely-form"
+  action="{{ routes.cart_add_url }}"
+  method="post"
+  enctype="multipart/form-data"
+  data-tablely-form
+>
+  <div class="tablely-scroll">
+    <table class="tablely-table">
+      <caption class="tablely-heading">{{ 'table.heading' | t }}</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="tablely-th-product">{{ 'table.col.product' | t }}</th>
+          {%- if col_price -%}
+            <th scope="col" class="tablely-th-price">{{ 'table.col.price' | t }}</th>
+          {%- endif -%}
+          {%- if col_stock -%}
+            <th scope="col" class="tablely-th-stock">{{ 'table.col.stock' | t }}</th>
+          {%- endif -%}
+          <th scope="col" class="tablely-th-qty">{{ 'table.col.qty' | t }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- assign idx = 0 -%}
+        {%- for row in tly_rows -%}
+          {%- comment %}
+            用 `| plus: 0` 把契约里的十进制字符串 vid 转成数字再比对：
+            Liquid 的 `where` 不做类型强制，字符串与数字直接比较恒不相等。
+          {%- endcomment -%}
+          {%- assign row_vid = row.vid | plus: 0 -%}
+          {%- assign v = product.variants | where: 'id', row_vid | first -%}
+          {%- if v -%}
+            {%- assign v_ok = false -%}
+            {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+            {%- assign v_img = v.image | default: product.featured_image -%}
+            {%- assign v_title = row.title | default: v.title -%}
+            {%- assign row_sku = row.sku | default: v.sku -%}
+            <tr
+              class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
+              data-tablely-row
+              data-vid="{{ v.id }}"
+            >
+              <td class="tablely-cell-product">
+                <div class="tablely-product">
+                  {%- if col_image and v_img -%}
+                    <img
+                      class="tablely-thumb"
+                      src="{{ v_img | image_url: width: 96 }}"
+                      alt="{{ v_img.alt | default: v_title | escape }}"
+                      width="48"
+                      height="48"
+                      loading="lazy"
+                    >
+                  {%- endif -%}
+                  <div class="tablely-product-text">
+                    <span class="tablely-title">{{ v_title | escape }}</span>
+                    {%- if col_sku and row_sku != blank -%}
+                      <span class="tablely-sku">{{ row_sku | escape }}</span>
+                    {%- endif -%}
+                    {%- if col_id -%}
+                      <span class="tablely-vid">{{ v.id }}</span>
+                    {%- endif -%}
+                    {%- if row.min > 1 -%}
+                      <span class="tablely-hint">{{ 'table.moq' | t: n: row.min }}</span>
+                    {%- endif -%}
+                    {%- if row.step > 1 -%}
+                      <span class="tablely-hint">{{ 'table.step' | t: n: row.step }}</span>
+                    {%- endif -%}
+                    {%- unless v_ok -%}
+                      <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
+                    {%- endunless -%}
+                  </div>
+                </div>
+              </td>
+              {%- if col_price -%}
+                <td class="tablely-cell-price">{{ v.price | money }}</td>
+              {%- endif -%}
+              {%- if col_stock -%}
+                <td class="tablely-cell-stock">
+                  {%- if v.inventory_management != blank -%}
+                    {{- v.inventory_quantity -}}
+                  {%- else -%}
+                    —
+                  {%- endif -%}
+                </td>
+              {%- endif -%}
+              <td class="tablely-cell-qty">
+                {%- if v_ok -%}
+                  <input type="hidden" name="items[{{ idx }}][id]" value="{{ v.id }}">
+                {%- endif -%}
+                <input
+                  class="tablely-qty"
+                  type="number"
+                  value="0"
+                  min="0"
+                  {%- if row.max %} max="{{ row.max }}"{% endif %}
+                  step="{{ row.step | default: 1 }}"
+                  inputmode="numeric"
+                  {%- if v_ok %}
+                    name="items[{{ idx }}][quantity]"
+                  {%- else %}
+                    disabled
+                  {%- endif %}
+                  aria-label="{{ 'table.col.qty' | t }} — {{ v_title | escape }}"
+                >
+              </td>
+            </tr>
+            {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="tablely-footer">
+    <button class="tablely-submit" type="submit">{{ 'table.addAll' | t }}</button>
+  </div>
+</form>
