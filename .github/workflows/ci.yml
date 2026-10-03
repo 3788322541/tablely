@@ -1,0 +1,125 @@
+name: CI
+
+# Y6（§21.4）：PR 必须 CI 全绿才可合并（配合 GitHub 分支保护：禁止直推 main）。
+#   verify   —— 所有 PR + push main：typecheck / lint / check-i18n / vitest / build + 安全断言
+#   function —— 仅当 extensions/tablely-pricing/** 变更时才有实质动作（M12 起接入三种 mode 的 fixture）
+#   e2e      —— 只跑里程碑标记（v* tag）/ 夜间 / 手动；Playwright 在 M5 引入
+#
+# ⚠️ 与 deploy.yml 的分工：本文件只做「门禁」，不负责部署。
+#    部署由 deploy.yml 在 push main 后走 SSH + 共享 edge 层（§九）。
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  schedule:
+    # 夜间跑一次（UTC 18:00 ≈ 北京时间 02:00），用于 e2e
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # 与本地/生产容器一致并锁定
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run check-i18n # 7 语言 key 集合与占位符零缺项
+      - run: npm run test # vitest（§21.1 单元层）
+      - run: npm run build
+
+      # §8.2 D：SHOPIFY_API_SECRET 仅服务端使用，绝不进前端 bundle。
+      # 只断言客户端产物——服务端 bundle 里出现该变量名属正常。
+      # （§2.3.1 P2 的 bundle 体积断言在 M4 引入 table-runtime 后加到这一处）
+      - name: 断言客户端产物不含应用密钥
+        run: |
+          set -e
+          fail=0
+          if grep -rIl "shpss_" build/client 2>/dev/null; then
+            echo "::error::客户端产物中出现了应用密钥（shpss_…）"
+            fail=1
+          fi
+          if grep -rIl "SHOPIFY_API_SECRET" build/client 2>/dev/null; then
+            echo "::error::客户端产物引用了 SHOPIFY_API_SECRET（服务端专用）"
+            fail=1
+          fi
+          [ "$fail" -eq 0 ] && echo "客户端产物未发现密钥"
+
+      # §8.2 E：高危/严重漏洞阻断合并（低危仅记录）。
+      # 只审计**生产依赖树**（--omit=dev）：devDependencies 里的 lint/codegen 工具链
+      # 不随镜像发布，其告警记入 issue 但不阻断（否则每次上游工具链告警都会卡住合并）。
+      - run: npm audit --omit=dev --audit-level=high
+
+  function:
+    name: function
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            pricing:
+              - 'extensions/tablely-pricing/**'
+
+      - if: steps.filter.outputs.pricing == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # 改价是审核敏感点：每次改 Function 都必须重跑（§21.2）。
+      # M12 起把 tier / wholesale / mixmatch 三种 mode 的 fixture 补进 vitest 套件，
+      # 这里同时做一次 Function 构建，确保 input query 与 schema 可编译。
+      - if: steps.filter.outputs.pricing == 'true'
+        run: npm ci
+
+      - if: steps.filter.outputs.pricing == 'true'
+        run: npm run test
+
+      - if: steps.filter.outputs.pricing == 'true'
+        run: npx shopify app function build --path extensions/tablely-pricing
+
+      - if: steps.filter.outputs.pricing != 'true'
+        run: echo "未改动 extensions/tablely-pricing/**，跳过 function job"
+
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    # 不在每次 PR 跑：Playwright 需真实（非无头）浏览器 + dev 店，成本高（§21.4）
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      - name: 运行 Playwright e2e
+        run: |
+          if [ -f playwright.config.ts ]; then
+            npx playwright install --with-deps chromium
+            npx playwright test
+          else
+            echo "playwright.config.ts 尚未就绪（M5 引入），本次跳过 e2e"
+          fi

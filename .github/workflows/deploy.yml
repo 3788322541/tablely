@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck # 类型门禁
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            set -e
+            cd /srv/tablely
+            git fetch --all && git reset --hard origin/main
+            # 1) 应用本体（postgres + app）。app 靠 edge 网络里的固定别名对外暴露，
+            #    自己不再起 Caddy、不占用宿主机的 80/443。
+            docker compose up -d --build --remove-orphans
+            # 2) 同步本站点的边缘路由片段，并热重载共享 Caddy（edge 层在 /srv/edge，不在本仓库里，
+            #    因此上面的 git reset --hard 不会覆盖到它）。
+            #    配置非法时 reload 会失败并保留旧配置继续服务。
+            install -m 644 edge/tablely.caddy /srv/edge/sites/tablely.caddy
+            docker exec edge-caddy caddy reload --config /etc/caddy/Caddyfile
+            docker image prune -f

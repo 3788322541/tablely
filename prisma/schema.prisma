@@ -1,0 +1,55 @@
+// Tablely — 批发订购表应用（Wholesale order tables）
+// 数据库：自建 PostgreSQL 16（本地开发用 brew postgresql@16，生产用 Docker 容器）
+// learn more: https://pris.ly/d/prisma-schema
+//
+// ⚠️ 所有时间列必须显式声明 @db.Timestamptz(3)（沿用 Cartly / Attributly / Linkly 的踩坑结论）：
+// 默认映射会生成 `timestamp without time zone`，此时 Prisma 绑定的 Date 参数
+// 会被 Postgres 当作 timestamptz 隐式转换，转换结果取决于数据库会话时区
+// （本地 Asia/Shanghai 会让范围查询整体偏移 8 小时）；
+// 且 `AT TIME ZONE` 在 timestamp 列上语义相反，跨时区分天会分错桶。
+//
+// M1 只建「脚手架必需」两表：会话存储 + webhook 幂等去重（Y8）。
+// 业务数据模型（Shop / TableRule / Wholesale / Application …）在 M2 一次性补全。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ⓪ 会话存储（@shopify/shopify-app-session-storage-prisma 依赖）
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime? @db.Timestamptz(3)
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime? @db.Timestamptz(3)
+}
+
+// ① webhook 幂等去重（Y8，§8.2 C）
+// 以 Shopify 投递头 `X-Shopify-Webhook-Id` 为主键：同一投递重复到达时
+// create 触发唯一键冲突（P2002），据此判定「已处理过」，不重复执行。
+// 尤其 `shop/redact` 必须幂等（§8.1），卸载重放时不能报错。
+model WebhookEvent {
+  id         String   @id // X-Shopify-Webhook-Id
+  topic      String // 归一化后的大写主题名（如 SHOP_REDACT）
+  shop       String
+  receivedAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([receivedAt]) // 定时清理超期行（§8.1 数据保留）
+}

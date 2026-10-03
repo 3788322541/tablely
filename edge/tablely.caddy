@@ -1,0 +1,4 @@
+tablely.zhenjunit.com {
+	encode gzip
+	reverse_proxy tablely-app:3000
+}

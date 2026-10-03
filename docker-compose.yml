@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tablely
+      POSTGRES_USER: tablely
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # 中文/多语言店铺名排序更稳
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - tablely_pgdata:/var/lib/postgresql/data
+    # 不映射到宿主机端口，仅 compose 内网可达
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tablely -d tablely"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy # 等 DB 就绪再跑 prisma migrate deploy
+    # edge 是共享边缘层（服务器上的 /srv/edge），全服务器只有它占用 80/443。
+    # 别名 tablely-app 供 edge 的 Caddy 反代，这样多个应用可以都叫 app 而不会撞名。
+    networks:
+      default:
+      edge:
+        aliases:
+          - tablely-app
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  tablely_pgdata: # Postgres 数据卷，务必持久化，删了数据就没了
+
+networks:
+  edge:
+    external: true
+    name: edge

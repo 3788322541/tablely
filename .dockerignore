@@ -1,0 +1,15 @@
+.git
+.gitignore
+.cache
+build
+node_modules
+**/node_modules
+.env
+.env.*
+shopify.web.toml
+.shopify
+.react-router
+.cursor
+.gemini
+.DS_Store
+*.log

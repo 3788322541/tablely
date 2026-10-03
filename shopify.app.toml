@@ -1,0 +1,44 @@
+# Tablely — 批发订购表应用（Wholesale order tables）
+# 配置参考：https://shopify.dev/docs/apps/tools/cli/configuration
+
+# 已在组织 zhenjun（Dev Dashboard ID 234045119）下创建 Public App「Tablely」（2026-10-03 创建，原拟名 Bulkly 因被占用而改名）
+# client_id 与 numeric app_id 见 doc/Shopify常用网址.md
+client_id = "c2b794078d89681a15ccdfac1e50bf13"
+name = "Tablely"
+# 生产域名（腾讯云香港轻量服务器 + 共享 edge 层 Caddy 自动 HTTPS）。dev 模式下 CLI 会自动重写为本地 tunnel。
+application_url = "https://tablely.zhenjunit.com"
+embedded = true
+
+[access_scopes]
+# read_products / write_products：读商品与变体（表格数据源）+ 写 app-owned metafield
+#   （Shop 级 tablely.settings / Product 级 tablely.table，§2.7 渲染契约）
+# write_discounts：自动折扣（阶梯价 / 批发价 / Mix & Match，§2.2）—— Function 改结算价，必须真实生效
+# write_cart_transforms：Cart Transform（行内改价 / 组合行，§2.2）
+# 零 PCD：不申请任何 customers 写权限；门控只读 Liquid 侧的 customer.tags（§2.4）
+scopes = "read_products,write_products,write_discounts,write_cart_transforms"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app_subscriptions/update"
+  topics = [ "app_subscriptions/update" ]
+
+  # 强制合规 webhook（隐私法要求，公开应用必须订阅）
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/compliance"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[auth]
+redirect_urls = [ "https://tablely.zhenjunit.com/auth/callback" ]
+
+[build]
+automatically_update_urls_on_dev = true
