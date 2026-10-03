@@ -62,17 +62,30 @@
     }
   }
 
-  /** `{name}` 占位符替换（与后台 app/i18n.ts 同约定；文案在 Liquid 侧取） */
-  function t(key, vars) {
-    var template = strings[key];
-    if (typeof template !== 'string') return '';
-    if (!vars) return template;
-    return template.replace(/\{(\w+)\}/g, function (match, name) {
-      return Object.prototype.hasOwnProperty.call(vars, name)
-        ? String(vars[name])
-        : match;
-    });
+  /**
+   * 文案插值：替换 locale 里的 `{{ name }}` 占位符（与主题 `| t` 的占位符格式一致）。
+   *
+   * ⚠️ 占位符必须是**双花括号**且**在 JS 侧替换** —— Liquid 的输出语句里出现字面 `{` `}`
+   * 会让解析器提前截断（M5 实测由 theme check 捕获），所以 `table-runtime.liquid`
+   * 只做 `| t | json`，不做参数替换。
+   *
+   * 做成工厂是为了可单测：真实调用处 `t` 绑定了「主题注入的 7 语字典」，
+   * 而单测需要一个可传入自定义字典的入口（见文件末的单测钩子）。
+   */
+  function makeT(dict) {
+    var messages = dict || {};
+    return function (key, vars) {
+      var template = messages[key];
+      if (typeof template !== 'string') return '';
+      if (!vars) return template;
+      return template.replace(/\{\{\s*(\w+)\s*\}\}|\{(\w+)\}/g, function (match, braced, bare) {
+        var name = braced || bare;
+        return Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match;
+      });
+    };
   }
+
+  var t = makeT(strings);
 
   function withDelimiters(cents, precision, thousands, decimal) {
     var value = typeof cents === 'number' && isFinite(cents) ? cents : 0;
@@ -571,6 +584,7 @@
    * 浏览器里该全局恒不存在，等于零行为、零副作用（见 app/services/storefront-runtime.test.ts）。
    */
   if (typeof window !== 'undefined' && window.__TABLELY_TEST__) {
+    window.__TABLELY_TEST__.makeT = makeT;
     window.__TABLELY_TEST__.formatMoney = formatMoney;
     window.__TABLELY_TEST__.toCents = toCents;
     window.__TABLELY_TEST__.rowError = rowError;
