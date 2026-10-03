@@ -1,0 +1,18 @@
+{
+    "name": "Tablely 注文フォーム",
+    "table": {
+        "heading": "ご注文フォーム",
+        "col": {
+            "product": "商品",
+            "price": "単価",
+            "stock": "在庫",
+            "qty": "数量"
+        },
+        "addAll": "すべてカートに入れる",
+        "moq": "最低 {{ n }}",
+        "step": "単位 {{ n }}"
+    },
+    "feedback": {
+        "soldOut": "在庫切れ"
+    }
+}

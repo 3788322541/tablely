@@ -6,13 +6,15 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { ensureTablelySetup } from "./services/settings.server";
 
 /**
  * Shopify 应用初始化（M1 脚手架）
  *
- * M1 只做最小可用：会话存储 + 内嵌后台 + OAuth。
- * M2 起在这里挂 `hooks.afterAuth`：建 Shop 行、播种默认设置、
- * 下发 Shop 级 app-data metafield（namespace `tablely` / key `settings`，§2.7 契约）。
+ * `afterAuth`（仅离线授权）做**安装播种**：建两份 metafield 定义（店面可见性）
+ * → 建 ShopSettings 默认行（已存在不覆盖）→ 下发 `tablely.settings`（§2.7 契约 v2）。
+ * 失败不阻塞认证：Overview 的 loader 会在每次进入后台时重跑同一套幂等自愈
+ * （`ensureTablelySetup`），商家无需重装。
  *
  * 约定（§8.2 A）：业务代码里的 `shop` 一律取自 `session`（Admin 路由）
  * 或 Shopify 签名参数（App Proxy），严禁取自请求体 / query。
@@ -26,6 +28,16 @@ const shopify = shopifyApp({
     authPathPrefix: "/auth",
     sessionStorage: new PrismaSessionStorage(prisma),
     distribution: AppDistribution.AppStore,
+    hooks: {
+        afterAuth: async ({ session, admin }) => {
+            if (session.isOnline) return;
+            try {
+                await ensureTablelySetup({ admin, shop: session.shop });
+            } catch (error) {
+                console.error("[tablely] afterAuth 安装播种失败:", error);
+            }
+        },
+    },
     future: {
         expiringOfflineAccessTokens: true,
     },

@@ -39,13 +39,13 @@ jobs:
 
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm run check-i18n # 7 语言 key 集合与占位符零缺项
+      - run: npm run check-i18n # 后台 + 店面（主题扩展 locales）7 语言零缺项
       - run: npm run test # vitest（§21.1 单元层）
       - run: npm run build
+      - run: npm run check-bundle # §2.3.1 P2：店面 JS gzip ≤ 15 KB
 
       # §8.2 D：SHOPIFY_API_SECRET 仅服务端使用，绝不进前端 bundle。
       # 只断言客户端产物——服务端 bundle 里出现该变量名属正常。
-      # （§2.3.1 P2 的 bundle 体积断言在 M4 引入 table-runtime 后加到这一处）
       - name: 断言客户端产物不含应用密钥
         run: |
           set -e

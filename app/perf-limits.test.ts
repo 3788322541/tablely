@@ -1,6 +1,11 @@
+import { gzipSync } from "node:zlib";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+    BUNDLE_MAX_GZIP_BYTES,
     BULK_MAX_PRODUCTS,
     CSV_MAX_BYTES,
     CSV_MAX_ROWS,
@@ -106,5 +111,38 @@ describe("checkBulkCount（P7）", () => {
                 overflow: 0,
             });
         }
+    });
+});
+
+/**
+ * P2：店面 JS bundle 体积（§2.3.1 / §十二 验收）
+ *
+ * 与 `scripts/check-bundle.ts` 同口径，但把断言放进单测套件，避免只有 CI 一个入口
+ * 才知道体积超限。阈值只从 `app/perf-limits.ts` 读，测试里不出现魔数。
+ */
+describe("店面 JS bundle 体积（P2）", () => {
+    const assetsDir = join(
+        process.cwd(),
+        "extensions",
+        "tablely-order-table",
+        "assets",
+    );
+
+    it("扩展 assets 下至少有一个 .js（否则断言失去意义）", () => {
+        const files = readdirSync(assetsDir).filter((name) =>
+            name.endsWith(".js"),
+        );
+        expect(files.length).toBeGreaterThan(0);
+    });
+
+    it("全部 .js 的 gzip 合计不超过 BUNDLE_MAX_GZIP_BYTES", () => {
+        const files = readdirSync(assetsDir).filter((name) =>
+            name.endsWith(".js"),
+        );
+        let total = 0;
+        for (const file of files) {
+            total += gzipSync(readFileSync(join(assetsDir, file))).byteLength;
+        }
+        expect(total).toBeLessThanOrEqual(BUNDLE_MAX_GZIP_BYTES);
     });
 });

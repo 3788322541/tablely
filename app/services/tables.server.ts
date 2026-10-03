@@ -20,6 +20,9 @@ import { MAX_TABLE_ROWS } from "../perf-limits";
 import {
     buildProductTableValue,
     deleteProductTableMetafield,
+    getShopInfo,
+    normalizeLayout,
+    pickColumnOverrides,
     syncProductTableMetafield,
     type GraphqlAdmin,
     type TableContractRow,
@@ -497,12 +500,14 @@ export async function pushProductTableMetafield(input: {
             buildProductTableValue({
                 v: 2,
                 enabled: table.enabled,
-                layout: table.layout,
-                columns: (table.columns ?? {}) as Record<string, boolean>,
+                layout: normalizeLayout(table.layout),
+                columns: pickColumnOverrides(table.columns),
                 orderMinAmount: table.orderMinAmount
                     ? table.orderMinAmount.toFixed(2)
                     : null,
                 rows: buildContractRows(variants, ruleValues),
+                // 矩阵坐标属 M6：M4 只保证契约字段存在且为 null，Liquid 走表格布局
+                matrix: null,
             }),
         );
     } catch (error) {
@@ -526,7 +531,10 @@ function buildContractRows(
             min: rule?.min ?? 1,
             max: rule?.max ?? null,
             step: rule?.step ?? 1,
+            // 档位（B6 展开）属 M12、批发价（B5 多组）属 M10/M12；
+            // M4 只保证「每行字段结构一致」（§五），故恒为空数组。
             tiers: [],
+            wholesale: [],
         };
     });
 }
@@ -646,21 +654,11 @@ export async function deleteProductTable(input: {
 /** 后台与御用的 Admin API 客户端形状 */
 export { type GraphqlAdmin };
 
-const SHOP_QUERY = `#graphql
-  query TablelyShop {
-    shop {
-      currencyCode
-    }
-  }
-`;
-
 /** 店铺本位币（起订金额字段的 suffix；§16.6 按店铺本位币存储与比较） */
 export async function getShopCurrency(admin: GraphqlAdmin): Promise<string> {
-    const res = await admin.graphql(SHOP_QUERY);
-    const json = await res.json();
-    const currency = (json as { data?: { shop?: { currencyCode?: string } } })?.data
-        ?.shop?.currencyCode;
-    return typeof currency === "string" && currency ? currency : "USD";
+    // 与 Shop 级 metafield 下发共用同一份店铺查询（getShopInfo 顺带取 shop.id）
+    const info = await getShopInfo(admin);
+    return info.currencyCode;
 }
 
 export type ShopifyProductRow = {

@@ -1,0 +1,18 @@
+{
+    "name": "Table de commande Tablely",
+    "table": {
+        "heading": "Bon de commande",
+        "col": {
+            "product": "Produit",
+            "price": "Prix",
+            "stock": "Stock",
+            "qty": "Quantité"
+        },
+        "addAll": "Tout ajouter au panier",
+        "moq": "Min. {{ n }}",
+        "step": "Pas {{ n }}"
+    },
+    "feedback": {
+        "soldOut": "En rupture de stock"
+    }
+}

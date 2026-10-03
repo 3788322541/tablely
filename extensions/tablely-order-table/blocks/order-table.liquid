@@ -1,0 +1,64 @@
+{% comment %}
+  Tablely — Order table（批发订购表）App Block（target: section）
+
+  商家在主题编辑器 → Apps 里把本块拖进「商品信息」区即可（商品页）。
+
+  渲染链路（方案 §五）：
+    ① 读 **Shop 级** metafield `tablely.settings`（owner = Shop）—— 布局默认 / 列开关 / 门控 /
+       缺货策略 / 起订金额 / 隐藏主题加购区等；
+    ② 读 **Product 级** metafield `tablely.table`（owner = Product）—— 该商品的变体行
+       （`rows[]`：min / max / step / tiers / wholesale），**不含价格与库存**（A1）；
+    ③ 两份都齐 + `enabled = true` + 至少一行 → 渲染表格；否则**零 DOM 输出**（不留空壳）。
+
+  ⚠️ 兜底读法：优先 plain namespace（`tablely`），读不到时退到应用内部命名空间形式
+     （`app.metafields.tablely.*` / `metafields['app--<app_id>--tablely']`），
+     避免 metafield 定义尚未建好（刚安装）时店面整个空白。
+
+  ⚠️ 价格 / 库存 / 可售状态一律由 `snippets/table-markup.liquid` 从 `product.variants`
+     实时读取，**契约里没有这些字段**（§2.7 A1）。
+
+  CSS / JS 由 `snippets/table-runtime.liquid` 在「确认渲染」后才加载（不依赖 schema 的
+  stylesheet / javascript 属性），保证未启用订购表的商品页不加载任何 Tablely 资源。
+{% endcomment %}
+
+{%- comment %} ① Shop 级 settings：plain namespace → 应用内部命名空间兜底 {%- endcomment -%}
+{%- assign tly_settings = shop.metafields.tablely.settings.value -%}
+{%- if tly_settings == nil -%}
+  {%- assign tly_settings = app.metafields.tablely.settings.value -%}
+{%- endif -%}
+
+{%- comment %} ② Product 级 table：同上（`app--431090565121--tablely` 是应用级常量） {%- endcomment -%}
+{%- assign tly_tbl = product.metafields.tablely.table.value -%}
+{%- if tly_tbl == nil -%}
+  {%- assign tly_tbl = product.metafields['app--431090565121--tablely'].table.value -%}
+{%- endif -%}
+
+{%- assign tly_rows = tly_tbl.rows -%}
+{%- assign tly_show = false -%}
+{%- if tly_tbl and tly_tbl.enabled == true and tly_rows and tly_rows.size > 0 -%}
+  {%- assign tly_show = true -%}
+{%- endif -%}
+
+{%- if tly_show -%}
+  {%- comment %}
+    布局：商品级覆写 → 店铺级默认 → 表格。
+    M4 只实现表格布局的 DOM；网格 / 列表 / 矩阵（M6）复用同一份数据，故这里先把
+    生效值输出成 `data-tablely-layout`，CSS 与 JS 后续按该属性切换。
+  {%- endcomment -%}
+  {%- assign tly_layout = tly_tbl.layout | default: tly_settings.defaultLayout | default: 'table' -%}
+  <div
+    class="tablely-root"
+    data-tablely-layout="{{ tly_layout }}"
+    {{ block.shopify_attributes }}
+  >
+    {% render 'table-runtime', tly_settings: tly_settings %}
+    {% render 'table-markup', tly_settings: tly_settings, tly_tbl: tly_tbl %}
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Order table",
+  "target": "section"
+}
+{% endschema %}

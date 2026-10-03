@@ -1,0 +1,16 @@
+api_version = "2026-07"
+
+[[extensions]]
+# Theme App Extension（方案 §五）：主题侧渲染商品订购表。
+#
+# M4 落地：App Block（target: section）+ 表格布局 + **无 JS 也能提交的 /cart/add 表单**。
+# M5 补 JS 增强（步进器 / 实时合计 / AJAX 加购 / 行内反馈 / 可访问性细化），
+# M6 补网格 / 列表 / 矩阵三种布局，M7 补含税显示与缺货三策略。
+#
+# 样式与运行时由 snippets/table-runtime.liquid 在「确认要渲染」之后才加载，
+# 未配置订购表的页面既不输出 DOM 也不加载 css / js（§五 P11）。
+type = "theme"
+name = "Tablely Order Table"
+handle = "tablely-order-table"
+uid = "888f20ad-fdec-bcec-dcf1-d70f4e4037f9613c2a2a"
+# 该 uid 由 CLI 在首次 `shopify app dev` 时向服务端注册扩展后自动回写（切勿手改/手写假值）。

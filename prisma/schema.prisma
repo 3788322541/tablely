@@ -69,10 +69,13 @@ model ShopSettings {
   shop           String   @unique
   enabled        Boolean  @default(false) // 全局开关
   defaultLayout  String   @default("table") // table | grid | list | matrix
+  columns        Json     @default("{}") // 列开关默认值（image / sku / id / price / stock）
   taxDisplay     String   @default("incl") // incl | excl（对应图 "Price w/o VAT"）
   outOfStockMode String   @default("gray") // gray | hide | backorder
   gateMode       String   @default("off") // off | hide_price | hide_table
   gateTags       String[] @default([]) // 批发客户标签
+  tierModel      String   @default("percent") // 阶梯价模型 A/B：percent | fixed（§2.2）
+  tierEnabled    Boolean  @default(true) // 阶梯价总开关（§2.2）
   theme          Json     @default("{}") // 品牌色 / 圆角 / 密度
   feedbackStyle  String   @default("inline") // inline | toast | both
   hideNative     Boolean  @default(false) // B1：隐藏主题自带加购区（默认关闭）
