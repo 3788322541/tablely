@@ -6,13 +6,29 @@
             "product": "商品",
             "price": "単価",
             "stock": "在庫",
-            "qty": "数量"
+            "qty": "数量",
+            "action": "追加"
         },
         "addAll": "すべてカートに入れる",
         "moq": "最低 {{ n }}",
-        "step": "単位 {{ n }}"
+        "step": "単位 {{ n }}",
+        "summary": "選択中 {{ rows }} 行 · {{ units }} 個 · 概算 {{ total }}",
+        "decrease": "数量を減らす",
+        "increase": "数量を増やす"
     },
     "feedback": {
-        "soldOut": "在庫切れ"
+        "added": "追加しました",
+        "partial": "{{ ok }} 件追加、{{ fail }} 件失敗",
+        "lowStock": "在庫は残り {{ n }} 点です",
+        "belowMin": "最低数量は {{ n }} です",
+        "aboveMax": "上限は {{ n }} です",
+        "wrongStep": "{{ n }} の倍数で入力してください",
+        "soldOut": "在庫切れ",
+        "error": "カートに追加できませんでした。もう一度お試しください。"
+    },
+    "orderMin": {
+        "label": "最低注文金額：{{ amount }}",
+        "progress": "現在 {{ current }} / 最低 {{ min }}",
+        "notMet": "最低注文金額まであと {{ amount }}"
     }
 }

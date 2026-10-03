@@ -1,5 +1,5 @@
 {% comment %}
-  Tablely 订购表 DOM（M4：仅表格布局；网格 / 列表 / 矩阵在 M6 复用同一份数据）
+  Tablely 订购表 DOM（M4：表格布局 + 无 JS 表单；M5：步进器 / 行内加购 / 反馈 / 合计 / 起订金额）
 
   · 语义化 `<table>` + `<th scope="col">`（B14）；窄屏由 `.tablely-scroll` 横向滚动。
   · 无 JS 兜底：**单张原生表单** `POST /cart/add`，多行
@@ -9,11 +9,16 @@
   · 价格 / 库存 / 可售状态**实时读 `variant`**（A1：metafield 里刻意没有这些字段）：
     `variant.price`（presentment 币种）/ `variant.inventory_quantity` /
     `variant.available`（由 Shopify 按 inventory_policy 自算）。
+    价格另以 `data-price`（**分为单位的整数**，与表格显示的 `| money` 同源）输出给 M5 的
+    合计与起订金额闸门用，**不写进 metafield**（A1）。
   · 不可售行：置灰 + 禁用（`gray` 策略）；**不渲染隐藏的 `id` 输入**——
     否则 Shopify 会因「quantity 缺失」把它当 1 件加购（M0 实测）。
   · 缩略图 `loading="lazy"` + 固定宽高（P3）。
   · `hideNative` 的 `<style>` 三重守卫：`enabled` + 商品级 `enabled` + 本次确实渲染；
     选择器做字符清洗且**不含 `!important`**（§2.8 / §十二 验收 14、15）。
+  · M5 的步进器 / 行内加购按钮 / 合计 / 起订金额**全部依赖 JS**（渐进增强）：
+    JS 就绪前由 CSS 隐藏（`data-tablely-ready`），无 JS 时退回「纯原生多行表单」，
+    表格里不出现点不动的死按钮（§五 无 JS 兜底）。
 {% endcomment %}
 
 {%- assign tly_rows = tly_tbl.rows -%}
@@ -42,6 +47,18 @@
 {%- if c_prod.stock != nil -%}{%- assign col_stock = c_prod.stock -%}{%- endif -%}
 
 {%- comment %}
+  Y14 整单起订金额的**生效阈值**：商品级覆写 → 店铺级默认 → 不限。
+  不做任何换算（十进制字符串原样交给 JS），展示时才按店铺 money_format 格式化；
+  `blank` 判断保证「留空 = 不限」不会退化成 `0`（§16.6 / §十二 验收 32）。
+{%- endcomment -%}
+{%- assign tly_min = '' -%}
+{%- if tly_tbl.orderMinAmount != nil and tly_tbl.orderMinAmount != blank -%}
+  {%- assign tly_min = tly_tbl.orderMinAmount -%}
+{%- elsif tly_settings.orderMinAmount != nil and tly_settings.orderMinAmount != blank -%}
+  {%- assign tly_min = tly_settings.orderMinAmount -%}
+{%- endif -%}
+
+{%- comment %}
   B1 隐藏主题自带加购区：三重守卫（本片段只在「已确认渲染」时被引入，故前两条即足够）
   之外，选择器再清洗掉 `<` `>` `{` `}` `;`（避免商家误填把 `<style>` 撑破），
   空选择器直接不输出。**不加 `!important`**（§十二 验收 15）。
@@ -68,7 +85,16 @@
   method="post"
   enctype="multipart/form-data"
   data-tablely-form
+  data-tablely-order-min="{{ tly_min | escape }}"
 >
+  {%- comment %}
+    反馈容器：成功走 `role="status"`（礼貌播报），失败走 `role="alert"`（即时播报）。
+    两个容器分开而不是动态改 role —— 动态改 role 后插入文本，辅助技术未必播报（B14）。
+    初始 `hidden`，无 JS 时永远不显示（无 JS 时也没有任何 JS 反馈可言）。
+  {%- endcomment -%}
+  <div class="tablely-feedback" role="status" aria-live="polite" data-tablely-feedback-ok hidden></div>
+  <div class="tablely-feedback tablely-feedback--error" role="alert" data-tablely-feedback-err hidden></div>
+
   <div class="tablely-scroll">
     <table class="tablely-table">
       <caption class="tablely-heading">{{ 'table.heading' | t }}</caption>
@@ -82,6 +108,7 @@
             <th scope="col" class="tablely-th-stock">{{ 'table.col.stock' | t }}</th>
           {%- endif -%}
           <th scope="col" class="tablely-th-qty">{{ 'table.col.qty' | t }}</th>
+          <th scope="col" class="tablely-th-action">{{ 'table.col.action' | t }}</th>
         </tr>
       </thead>
       <tbody>
@@ -99,10 +126,17 @@
             {%- assign v_img = v.image | default: product.featured_image -%}
             {%- assign v_title = row.title | default: v.title -%}
             {%- assign row_sku = row.sku | default: v.sku -%}
+            {%- assign row_step = row.step | default: 1 -%}
             <tr
               class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
               data-tablely-row
               data-vid="{{ v.id }}"
+              data-price="{{ v.price }}"
+              data-min="{{ row.min | default: 1 }}"
+              {%- if row.max %} data-max="{{ row.max }}"{% endif %}
+              data-step="{{ row_step }}"
+              {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+              {%- unless v_ok %} data-soldout="true"{% endunless %}
             >
               <td class="tablely-cell-product">
                 <div class="tablely-product">
@@ -127,12 +161,17 @@
                     {%- if row.min > 1 -%}
                       <span class="tablely-hint">{{ 'table.moq' | t: n: row.min }}</span>
                     {%- endif -%}
-                    {%- if row.step > 1 -%}
-                      <span class="tablely-hint">{{ 'table.step' | t: n: row.step }}</span>
+                    {%- if row_step > 1 -%}
+                      <span class="tablely-hint">{{ 'table.step' | t: n: row_step }}</span>
                     {%- endif -%}
                     {%- unless v_ok -%}
                       <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
                     {%- endunless -%}
+                    {%- comment %}
+                      行内反馈位（M5）：失败时由 JS 写入具体原因（库存 / 起订量 / 步长 / 上限），
+                      初始为空且不占位；`role="alert"` 保证键盘与读屏用户也能拿到原因（B14）。
+                    {%- endcomment -%}
+                    <span class="tablely-row-msg" role="alert" data-tablely-row-msg></span>
                   </div>
                 </div>
               </td>
@@ -152,21 +191,49 @@
                 {%- if v_ok -%}
                   <input type="hidden" name="items[{{ idx }}][id]" value="{{ v.id }}">
                 {%- endif -%}
-                <input
-                  class="tablely-qty"
-                  type="number"
-                  value="0"
-                  min="0"
-                  {%- if row.max %} max="{{ row.max }}"{% endif %}
-                  step="{{ row.step | default: 1 }}"
-                  inputmode="numeric"
-                  {%- if v_ok %}
-                    name="items[{{ idx }}][quantity]"
-                  {%- else %}
-                    disabled
-                  {%- endif %}
-                  aria-label="{{ 'table.col.qty' | t }} — {{ v_title | escape }}"
-                >
+                <div class="tablely-stepper">
+                  <button
+                    type="button"
+                    class="tablely-step"
+                    data-tablely-step="-1"
+                    aria-label="{{ 'table.decrease' | t }} — {{ v_title | escape }}"
+                    {%- unless v_ok %} disabled{% endunless %}
+                  >−</button>
+                  <input
+                    class="tablely-qty"
+                    type="number"
+                    value="0"
+                    min="0"
+                    {%- if row.max %} max="{{ row.max }}"{% endif %}
+                    step="{{ row_step }}"
+                    inputmode="numeric"
+                    {%- if v_ok %}
+                      name="items[{{ idx }}][quantity]"
+                    {%- else %}
+                      disabled
+                    {%- endif %}
+                    aria-label="{{ 'table.col.qty' | t }} — {{ v_title | escape }}"
+                  >
+                  <button
+                    type="button"
+                    class="tablely-step"
+                    data-tablely-step="1"
+                    aria-label="{{ 'table.increase' | t }} — {{ v_title | escape }}"
+                    {%- unless v_ok %} disabled{% endunless %}
+                  >+</button>
+                </div>
+              </td>
+              <td class="tablely-cell-action">
+                {%- if v_ok -%}
+                  <button
+                    type="button"
+                    class="tablely-add"
+                    data-tablely-add
+                    aria-label="{{ 'table.col.action' | t }} — {{ v_title | escape }}"
+                  >{{ 'table.col.action' | t }}</button>
+                {%- else -%}
+                  <span class="tablely-add-none" aria-hidden="true">—</span>
+                {%- endif -%}
               </td>
             </tr>
             {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
@@ -177,6 +244,23 @@
   </div>
 
   <div class="tablely-footer">
-    <button class="tablely-submit" type="submit">{{ 'table.addAll' | t }}</button>
+    {%- comment %}
+      合计与起订金额进度（M5，均依赖 JS 实时计算）：
+      · 合计 = Σ(单价 × 数量)，单价取自行上的 `data-price`（与表格显示的 `| money` 同源）；
+      · 起订金额只在阈值存在时渲染（「留空 = 不限」时**整块不输出**，不显示 `0`，§十二 验收 32）；
+      · 判定按**折前小计**、在折扣之前（§16.6）；
+      · `role="status"` 只给「还差 X」这一句，避免每次改数量都播报整串进度（B14 降噪）。
+    {%- endcomment -%}
+    <div class="tablely-summary">
+      <span class="tablely-summary-text" data-tablely-summary></span>
+      {%- if tly_min != '' -%}
+        <span class="tablely-ordermin" data-tablely-ordermin>
+          <span class="tablely-ordermin-label" data-tablely-ordermin-label></span>
+          <span class="tablely-ordermin-progress" data-tablely-ordermin-progress></span>
+        </span>
+        <span class="tablely-ordermin-msg" role="status" aria-live="polite" data-tablely-ordermin-msg></span>
+      {%- endif -%}
+    </div>
+    <button class="tablely-submit" type="submit" data-tablely-submit>{{ 'table.addAll' | t }}</button>
   </div>
 </form>

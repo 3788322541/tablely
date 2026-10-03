@@ -6,13 +6,29 @@
             "product": "商品",
             "price": "單價",
             "stock": "庫存",
-            "qty": "數量"
+            "qty": "數量",
+            "action": "加入購物車"
         },
         "addAll": "全部加入購物車",
         "moq": "起訂 {{ n }}",
-        "step": "步長 {{ n }}"
+        "step": "步長 {{ n }}",
+        "summary": "已選 {{ rows }} 行 · {{ units }} 件 · 預估 {{ total }}",
+        "decrease": "減少數量",
+        "increase": "增加數量"
     },
     "feedback": {
-        "soldOut": "暫時缺貨"
+        "added": "已加入",
+        "partial": "已加入 {{ ok }} 行，{{ fail }} 行失敗",
+        "lowStock": "庫存僅剩 {{ n }} 件",
+        "belowMin": "起訂量為 {{ n }}",
+        "aboveMax": "上限為 {{ n }}",
+        "wrongStep": "必須是 {{ n }} 的倍數",
+        "soldOut": "暫時缺貨",
+        "error": "加入購物車失敗，請重試。"
+    },
+    "orderMin": {
+        "label": "起訂金額：{{ amount }}",
+        "progress": "目前 {{ current }} / 起訂 {{ min }}",
+        "notMet": "還差 {{ amount }} 達到起訂金額"
     }
 }
