@@ -10,6 +10,8 @@
             "action": "Ajouter"
         },
         "addAll": "Tout ajouter au panier",
+        "vatExcl": "Prix HT",
+        "vatIncl": "Prix TTC",
         "moq": "Min. {{ n }}",
         "step": "Pas {{ n }}",
         "summary": "Sélection : {{ rows }} lignes · {{ units }} unités · Est. {{ total }}",

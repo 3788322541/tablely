@@ -10,6 +10,8 @@
             "action": "追加"
         },
         "addAll": "すべてカートに入れる",
+        "vatExcl": "税抜価格",
+        "vatIncl": "税込価格",
         "moq": "最低 {{ n }}",
         "step": "単位 {{ n }}",
         "summary": "選択中 {{ rows }} 行 · {{ units }} 個 · 概算 {{ total }}",

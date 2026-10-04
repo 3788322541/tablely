@@ -278,6 +278,32 @@
     opacity: 0.5;
 }
 
+/* ===================== 价格与折扣标（M7，§1.4 #15） ===================== */
+
+/* 价格块：当前价 + 划线原价 + 折扣百分比徽标（四种布局共用同一片段输出） */
+.tablely-price {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35em;
+    white-space: nowrap;
+}
+
+.tablely-price-was {
+    font-size: 0.85em;
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+/* 百分比是**文字**（如 `-33%`），不靠颜色表达，故 7 语无需翻译（B14） */
+.tablely-price-badge {
+    font-size: 0.78em;
+    font-weight: 600;
+    padding: 0.05em 0.4em;
+    border: 1px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
+}
+
 /* ------------------------------ 数量步进器 ------------------------------ */
 
 .tablely-stepper {

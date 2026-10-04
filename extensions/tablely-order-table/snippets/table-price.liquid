@@ -1,0 +1,24 @@
+{% comment %}
+  价格块（表格 / 网格 / 列表 / 矩阵四种布局共用；M7 折扣标）。
+
+  参数：v —— 变体对象（`{% render %}` 隔离作用域须显式传参）。
+  价格从 `variant` **实时读**（A1：契约里没有价格）：
+
+  · **当前价** = `v.price`（与主题 `| money` 同源，含税与否随店铺 / 市场设置，见
+    `table-markup.liquid` 的 `tly_price_label`）；
+  · **折扣标（§1.4 #15）**：**基准 = 变体当前价**，仅当 `compare_at_price > price` 时输出 ——
+    - 划线原价 = `compare_at_price | money`（语义化 `<s>`，表「已作废的原价」）；
+    - 折扣百分比 = `100 - round(price / compare_at_price * 100)`，形如 `-33%`，
+      **纯数字 + `%`，语言中立**（不新增 locale key，7 语无需翻译）。
+  · **不靠颜色表达**（B14）：百分比是可见文字，原价有 `<s>` 语义，二者皆非颜色标识。
+  · 无折扣时不输出任何多余节点（不占位、不留空气泡）。
+{% endcomment %}
+<span class="tablely-price">
+  <span class="tablely-price-now">{{ v.price | money }}</span>
+  {%- if v.compare_at_price > v.price -%}
+    {%- assign tly_pct_now = v.price | times: 100.0 | divided_by: v.compare_at_price | round -%}
+    {%- assign tly_pct_off = 100 | minus: tly_pct_now -%}
+    <s class="tablely-price-was">{{ v.compare_at_price | money }}</s>
+    <span class="tablely-price-badge">-{{ tly_pct_off }}%</span>
+  {%- endif -%}
+</span>

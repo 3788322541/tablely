@@ -10,6 +10,8 @@
             "action": "加入購物車"
         },
         "addAll": "全部加入購物車",
+        "vatExcl": "未稅價",
+        "vatIncl": "含稅價",
         "moq": "起訂 {{ n }}",
         "step": "步長 {{ n }}",
         "summary": "已選 {{ rows }} 行 · {{ units }} 件 · 預估 {{ total }}",

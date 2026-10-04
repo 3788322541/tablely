@@ -10,6 +10,8 @@
             "action": "Añadir"
         },
         "addAll": "Añadir todo al carrito",
+        "vatExcl": "Precio sin IVA",
+        "vatIncl": "Precio con IVA",
         "moq": "Mín. {{ n }}",
         "step": "Paso {{ n }}",
         "summary": "Seleccionadas {{ rows }} filas · {{ units }} unidades · Est. {{ total }}",
