@@ -11,6 +11,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
+import { hasFeature } from "../plan";
 import { ADMIN_PAGE_SIZE } from "../perf-limits";
 import {
     addProductTables,
@@ -21,6 +22,7 @@ import {
     isTablelyError,
     listProductTables,
     listProducts,
+    listReadOnlyProductIds,
     maxTablesForPlan,
     resolvePlan,
     saveShopOrderMinAmount,
@@ -60,6 +62,8 @@ type TableRowView = {
     orderMinAmount: string | null;
     ruleCount: number;
     updatedAt: string;
+    /** 降级后超限只读（§1.6）：仅 Free 且已启用超额时为 true */
+    readOnly: boolean;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -75,7 +79,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const plan = await resolvePlan(session.shop);
     const limit = maxTablesForPlan(plan);
 
-    const [used, allRows, templates, collections, currency, shopOrderMinAmount] =
+    const [used, allRows, templates, collections, currency, shopOrderMinAmount, readOnlyIds] =
         await Promise.all([
             countEnabledTables(session.shop),
             // 只取商品 id 列表用于「有没有配置」与搜索交集；标题走 Admin API
@@ -84,6 +88,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             listCollections(admin),
             getShopCurrency(admin),
             getShopOrderMinAmount(session.shop),
+            listReadOnlyProductIds(session.shop),
         ]);
 
     // 关键词搜索：标题不在本应用库里（§四 未存 title），先用 Admin API 搜出命中 id 再与库内求交集。
@@ -123,6 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             orderMinAmount: row.orderMinAmount,
             ruleCount: row.ruleCount,
             updatedAt: row.updatedAt.toISOString(),
+            readOnly: readOnlyIds.has(row.productId),
         };
     });
 
@@ -228,6 +234,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 const EMDASH = "—";
 
+/** Free 下显示的「Pro 功能」提示：徽章 + 升级链接（§19.3） */
+function ProHint({ label, upgrade }: { label: string; upgrade: string }) {
+    return (
+        <s-stack direction="inline" gap="small" alignItems="center">
+            <s-badge tone="info">{label}</s-badge>
+            <s-link href="/app/plans">{upgrade}</s-link>
+        </s-stack>
+    );
+}
+
 const cellText: React.CSSProperties = {
     display: "block",
     overflow: "hidden",
@@ -249,6 +265,7 @@ export default function TablesPage() {
         pick,
         currency,
         shopOrderMinAmount,
+        plan,
         quota,
         totalConfigured,
         rows,
@@ -259,6 +276,9 @@ export default function TablesPage() {
     const t = getT(locale);
     const [searchParams, setSearchParams] = useSearchParams();
     const shopify = useAppBridge();
+
+    const canOrderMinimum = hasFeature(plan, "order_minimum");
+    const canTemplates = hasFeature(plan, "layout_templates");
 
     const shopMinFetcher = useFetcher<typeof action>();
     const addFetcher = useFetcher<typeof action>();
@@ -377,13 +397,19 @@ export default function TablesPage() {
                             min={0}
                             step={0.01}
                             suffix={currency}
+                            disabled={!canOrderMinimum}
                             onChange={(event) => setShopMin(valueOf(event))}
                         />
                         <s-text color="subdued">{t("tables.shopDefaultHint")}</s-text>
+                        {!canOrderMinimum ? (
+                            <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                        ) : null}
                         <s-stack direction="inline" gap="base">
                             <s-button
                                 type="submit"
-                                disabled={shopMinFetcher.state !== "idle"}
+                                disabled={
+                                    !canOrderMinimum || shopMinFetcher.state !== "idle"
+                                }
                             >
                                 {t("tables.save")}
                             </s-button>
@@ -557,24 +583,31 @@ export default function TablesPage() {
                                                 </div>
                                             </s-table-cell>
                                             <s-table-cell>
-                                                <s-switch
-                                                    accessibilityLabel={t(
-                                                        "tables.toggleEnabled",
-                                                    )}
-                                                    checked={row.enabled}
-                                                    onChange={(event) => {
-                                                        toggleFetcher.submit(
-                                                            {
-                                                                intent: "toggle-enabled",
-                                                                productId: row.productId,
-                                                                enabled: checkedOf(event)
-                                                                    ? "on"
-                                                                    : "off",
-                                                            },
-                                                            { method: "post" },
-                                                        );
-                                                    }}
-                                                />
+                                                <s-stack direction="inline" gap="small" alignItems="center">
+                                                    <s-switch
+                                                        accessibilityLabel={t(
+                                                            "tables.toggleEnabled",
+                                                        )}
+                                                        checked={row.enabled}
+                                                        onChange={(event) => {
+                                                            toggleFetcher.submit(
+                                                                {
+                                                                    intent: "toggle-enabled",
+                                                                    productId: row.productId,
+                                                                    enabled: checkedOf(event)
+                                                                        ? "on"
+                                                                        : "off",
+                                                                },
+                                                                { method: "post" },
+                                                            );
+                                                        }}
+                                                    />
+                                                    {row.readOnly ? (
+                                                        <s-badge tone="warning">
+                                                            {t("tables.readOnlyBadge")}
+                                                        </s-badge>
+                                                    ) : null}
+                                                </s-stack>
                                             </s-table-cell>
                                             <s-table-cell>
                                                 <span style={cellText}>
@@ -646,6 +679,9 @@ export default function TablesPage() {
                     {templateFailed ? (
                         <s-banner tone="critical">{t(templateFailed.errorKey)}</s-banner>
                     ) : null}
+                    {!canTemplates ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
 
                     {templates.length === 0 ? (
                         <s-stack direction="block" gap="small">
@@ -681,6 +717,7 @@ export default function TablesPage() {
                                             </s-stack>
                                             <s-stack direction="inline" gap="base">
                                                 <s-button
+                                                    disabled={!canTemplates}
                                                     onClick={() =>
                                                         templateFetcher.submit(
                                                             {
@@ -701,6 +738,7 @@ export default function TablesPage() {
                                                 <s-button
                                                     variant="tertiary"
                                                     tone="critical"
+                                                    disabled={!canTemplates}
                                                     onClick={() =>
                                                         templateFetcher.submit(
                                                             {
@@ -817,7 +855,10 @@ export default function TablesPage() {
                                     <s-stack direction="inline" gap="base">
                                         <s-button
                                             type="submit"
-                                            disabled={templateFetcher.state !== "idle"}
+                                            disabled={
+                                                !canTemplates ||
+                                                templateFetcher.state !== "idle"
+                                            }
                                         >
                                             {t("templates.apply")}
                                         </s-button>

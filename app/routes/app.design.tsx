@@ -5,6 +5,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
+import { hasFeature } from "../plan";
 import {
     DESIGN_CHOICES,
     NATIVE_SELECTOR_CANDIDATES,
@@ -14,8 +15,10 @@ import {
 import {
     getDesignSettings,
     getPreviewUrl,
+    isTablelyError,
     saveDesignSettings,
 } from "../services/design.server";
+import { resolvePlan } from "../services/tables.server";
 
 /**
  * Design（M8）—— 外观 / 行为 / 高级
@@ -28,18 +31,26 @@ import {
  * 安全兜底由店面侧结构性保证（`table-style.liquid` 只在表格确实渲染时才输出，
  * 见 §2.8 约束 6 / §十二 验收 14）。这里只负责「配得清楚、存得安全」。
  *
- * ⚠️ Pro 门控（外观属 Pro）按方案统一推迟 **M9 付费墙**：本页不判套餐，只做可配可存。
+ * Pro 门控（M9 付费墙，§19.3）：
+ *   · 外观 4 字段（品牌色 / 圆角 / 密度 / 字体，#27）属 Pro；
+ *   · 缺货策略（#13）属 Pro；
+ *   · 含税显示（#14）/ 反馈样式（#7）/ 隐藏加购区（#32）属 Free，保持可用。
+ *   Free 下 Pro 字段**禁用编辑**并显示 Pro 徽章 + 升级链接；后端 `saveDesignSettings`
+ *   对 Pro 值变化同样拒写（双保险），此处捕获 `isTablelyError` 回显 `error.proRequired`。
  */
 
 type DesignActionData =
     | { ok: true }
-    | { ok: false; errorKey: string };
+    | { ok: false; errorKey: string; field?: string };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
     const locale = localeFromRequest(request);
 
-    const settings = await getDesignSettings(session.shop);
+    const [settings, plan] = await Promise.all([
+        getDesignSettings(session.shop),
+        resolvePlan(session.shop),
+    ]);
 
     // 预览链接失败不应影响整页（无已启用商品 → null，按钮禁用）
     let previewUrl: string | null = null;
@@ -49,7 +60,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.error("[tablely] design preview url failed:", error);
     }
 
-    return { locale, settings, previewUrl };
+    return { locale, settings, previewUrl, plan };
 };
 
 export const action = async ({
@@ -76,6 +87,10 @@ export const action = async ({
         });
         return { ok: true };
     } catch (error) {
+        // Pro 门控拒写：回显 `error.proRequired`（Free 改动 Pro 值）
+        if (isTablelyError(error)) {
+            return { ok: false, errorKey: error.key, field: error.field ?? undefined };
+        }
         console.error("[tablely] design action failed:", error);
         // 写 metafield 失败必须显式报错，不允许静默成功（§六 共用交互）
         return { ok: false, errorKey: "error.metafieldFailed" };
@@ -89,11 +104,24 @@ const checkedOf = (event: Event): boolean =>
 
 const CUSTOM_PRESET = "__custom__";
 
+/** Free 下显示的「Pro 功能」提示：徽章 + 升级链接（§19.3） */
+function ProHint({ label, upgrade }: { label: string; upgrade: string }) {
+    return (
+        <s-stack direction="inline" gap="small" alignItems="center">
+            <s-badge tone="info">{label}</s-badge>
+            <s-link href="/app/plans">{upgrade}</s-link>
+        </s-stack>
+    );
+}
+
 export default function DesignPage() {
-    const { locale, settings, previewUrl } = useLoaderData<typeof loader>();
+    const { locale, settings, previewUrl, plan } = useLoaderData<typeof loader>();
     const t = getT(locale);
     const shopify = useAppBridge();
     const fetcher = useFetcher<typeof action>();
+
+    const canCustomStyle = hasFeature(plan, "custom_style");
+    const canOutOfStock = hasFeature(plan, "out_of_stock");
 
     const [brandColor, setBrandColor] = useState(settings.style.brandColor ?? "");
     const [radius, setRadius] = useState(
@@ -145,11 +173,15 @@ export default function DesignPage() {
             <s-section heading={t("design.appearance")}>
                 <s-stack direction="block" gap="base">
                     <s-text color="subdued">{t("design.appearanceHint")}</s-text>
+                    {!canCustomStyle ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
 
                     <s-color-field
                         label={t("design.brandColor")}
                         details={t("design.brandColorHint")}
                         value={brandColor}
+                        disabled={!canCustomStyle}
                         onChange={(event) => setBrandColor(valueOf(event))}
                     />
 
@@ -160,12 +192,14 @@ export default function DesignPage() {
                         min={RADIUS_MIN}
                         max={RADIUS_MAX}
                         step={1}
+                        disabled={!canCustomStyle}
                         onChange={(event) => setRadius(valueOf(event))}
                     />
 
                     <s-select
                         label={t("design.density")}
                         value={density}
+                        disabled={!canCustomStyle}
                         onChange={(event) => setDensity(valueOf(event))}
                     >
                         {DESIGN_CHOICES.densities.map((option) => (
@@ -179,6 +213,7 @@ export default function DesignPage() {
                     <s-select
                         label={t("design.font")}
                         value={font}
+                        disabled={!canCustomStyle}
                         onChange={(event) => setFont(valueOf(event))}
                     >
                         {DESIGN_CHOICES.fonts.map((option) => (
@@ -209,6 +244,7 @@ export default function DesignPage() {
                     <s-select
                         label={t("design.outOfStock")}
                         value={outOfStock}
+                        disabled={!canOutOfStock}
                         onChange={(event) => setOutOfStock(valueOf(event))}
                     >
                         {DESIGN_CHOICES.outOfStockModes.map((option) => (
@@ -218,6 +254,9 @@ export default function DesignPage() {
                         ))}
                     </s-select>
                     <s-text color="subdued">{t("design.outOfStockHint")}</s-text>
+                    {!canOutOfStock ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
 
                     <s-select
                         label={t("design.feedbackStyle")}

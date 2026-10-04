@@ -5,14 +5,17 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 
 import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
+import { hasFeature, isProLayout } from "../plan";
 import { MAX_TABLE_ROWS } from "../perf-limits";
 import {
     getProductTable,
     getProductRefsByIds,
     getShopCurrency,
     getShopOrderMinAmount,
+    isProductReadOnly,
     isTablelyError,
     listProductVariants,
+    resolvePlan,
     saveProductTable,
     deleteProductTable,
 } from "../services/tables.server";
@@ -25,8 +28,11 @@ import { saveTemplateFromProduct } from "../services/templates.server";
  * 不用 `s-modal`（`s-modal` 只能命令式 `showOverlay()`，在嵌套路由下不如 overlay 稳）。
  * 打开 / 关闭由父路由的 `?edit=<productId>` 决定，本路由是 `app.tables.tsx` 的子路由。
  *
- * ⚠️ Pro 门控（整单起订金额 §16.6、非 table 布局 §19.2）按方案归 **M9 付费墙**落地：
- * 本里程碑不提前实现「Free 禁用 + Pro 徽章」，避免与 Billing 分叉出两套判定。
+ * Pro 门控（M9 付费墙，§19.3）：
+ *   · 非 table 布局（#3）与整单起订金额（#36）属 Pro → Free 下对应控件禁用并显示 Pro 徽章；
+ *   · 另存为模板（#28）属 Pro → Free 下按钮禁用；
+ *   · 降级后**超限商品只读**（§1.6）：整表控件锁定，仅允许「关闭启用」以释放额度。
+ *   后端 `saveProductTable` 同样拒写（双保险）。
  *
  * ⚠️ 不能 import `.server` 模块到组件里（`.server` 在客户端会被替换成空模块），
  * 所以 GID → 数字 id 这类渲染期要用的纯函数在本文件内保留一份等价实现。
@@ -52,7 +58,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const productId = decodeURIComponent(params.productId ?? "");
 
     const isValidGid = productId.startsWith("gid://");
-    const [product, table, variants, currency, shopOrderMinAmount] = await Promise.all([
+    const [product, table, variants, currency, shopOrderMinAmount, plan] = await Promise.all([
         isValidGid
             ? getProductRefsByIds(admin, [productId]).then((rows) => rows[0] ?? null)
             : Promise.resolve(null),
@@ -62,13 +68,22 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             : Promise.resolve([] as { id: string; title: string; sku: string | null }[]),
         getShopCurrency(admin),
         getShopOrderMinAmount(session.shop),
+        resolvePlan(session.shop),
     ]);
+
+    // 降级后超限只读（§1.6）：仅当该商品**已启用且超出 Free 额度**时锁定整表
+    const readOnly =
+        isValidGid && table?.enabled
+            ? await isProductReadOnly(session.shop, productId)
+            : false;
 
     return {
         locale,
         productId,
         currency,
         shopOrderMinAmount,
+        plan,
+        readOnly,
         rowLimit: MAX_TABLE_ROWS,
         product: product
             ? {
@@ -163,11 +178,23 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
 type RuleState = { min: string; max: string; step: string };
 
+/** Free 下显示的「Pro 功能」提示：徽章 + 升级链接（§19.3） */
+function ProHint({ label, upgrade }: { label: string; upgrade: string }) {
+    return (
+        <s-stack direction="inline" gap="small" alignItems="center">
+            <s-badge tone="info">{label}</s-badge>
+            <s-link href="/app/plans">{upgrade}</s-link>
+        </s-stack>
+    );
+}
+
 export default function TableDrawer() {
     const {
         locale,
         currency,
         shopOrderMinAmount,
+        plan,
+        readOnly,
         rowLimit,
         product,
         table,
@@ -177,6 +204,12 @@ export default function TableDrawer() {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const shopify = useAppBridge();
+
+    const canLayout = hasFeature(plan, "layout_non_table");
+    const canOrderMin = hasFeature(plan, "order_minimum");
+    const canTemplate = hasFeature(plan, "layout_templates");
+    // 只读：降级超限商品整表锁定（仍可关闭启用以释放额度）
+    const locked = readOnly;
 
     const saveFetcher = useFetcher<typeof action>();
     const deleteFetcher = useFetcher<typeof action>();
@@ -364,6 +397,13 @@ export default function TableDrawer() {
                         <s-stack direction="block" gap="large">
                             {errorKey ? <s-banner tone="critical">{t(errorKey)}</s-banner> : null}
 
+                            {locked ? (
+                                <s-banner tone="warning">
+                                    {t("drawer.readOnly")}{" "}
+                                    <s-link href="/app/plans">{t("pro.upgrade")}</s-link>
+                                </s-banner>
+                            ) : null}
+
                             <s-switch
                                 name="enabled"
                                 label={t("drawer.enabled")}
@@ -371,19 +411,29 @@ export default function TableDrawer() {
                                 onChange={(event) => setEnabledOn(checkedOf(event))}
                             />
 
-                            <s-select
-                                name="layout"
-                                label={t("drawer.layout")}
-                                value={layout}
-                                onChange={(event) => setLayout(valueOf(event))}
-                            >
-                                <s-option value="inherit">{t("layout.inherit")}</s-option>
-                                {LAYOUTS.map((item) => (
-                                    <s-option key={item} value={item}>
-                                        {t(`layout.${item}`)}
-                                    </s-option>
-                                ))}
-                            </s-select>
+                            <s-stack direction="block" gap="small">
+                                <s-select
+                                    name="layout"
+                                    label={t("drawer.layout")}
+                                    value={layout}
+                                    disabled={locked}
+                                    onChange={(event) => setLayout(valueOf(event))}
+                                >
+                                    <s-option value="inherit">{t("layout.inherit")}</s-option>
+                                    {LAYOUTS.map((item) => (
+                                        <s-option
+                                            key={item}
+                                            value={item}
+                                            disabled={!canLayout && isProLayout(item)}
+                                        >
+                                            {t(`layout.${item}`)}
+                                        </s-option>
+                                    ))}
+                                </s-select>
+                                {!canLayout ? (
+                                    <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                                ) : null}
+                            </s-stack>
 
                             <s-stack direction="block" gap="small">
                                 <s-number-field
@@ -393,11 +443,15 @@ export default function TableDrawer() {
                                     min={0}
                                     step={0.01}
                                     suffix={currency}
+                                    disabled={locked || !canOrderMin}
                                     onChange={(event) => setOrderMin(valueOf(event))}
                                 />
                                 <s-text color="subdued">{t("drawer.orderMinHint")}</s-text>
                                 {inheritHint ? (
                                     <s-text color="subdued">{inheritHint}</s-text>
+                                ) : null}
+                                {!canOrderMin ? (
+                                    <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
                                 ) : null}
                             </s-stack>
 
@@ -448,6 +502,7 @@ export default function TableDrawer() {
                                                     value={rule.min}
                                                     min={1}
                                                     step={1}
+                                                    disabled={locked}
                                                     onChange={(event) =>
                                                         updateRule(variant.id, {
                                                             min: valueOf(event),
@@ -460,6 +515,7 @@ export default function TableDrawer() {
                                                     value={rule.max}
                                                     min={1}
                                                     step={1}
+                                                    disabled={locked}
                                                     onChange={(event) =>
                                                         updateRule(variant.id, {
                                                             max: valueOf(event),
@@ -472,6 +528,7 @@ export default function TableDrawer() {
                                                     value={rule.step}
                                                     min={1}
                                                     step={1}
+                                                    disabled={locked}
                                                     onChange={(event) =>
                                                         updateRule(variant.id, {
                                                             step: valueOf(event),
@@ -494,12 +551,17 @@ export default function TableDrawer() {
                                     name="templateName"
                                     label={t("templates.name")}
                                     value={templateName}
+                                    disabled={locked || !canTemplate}
                                     onChange={(event) => setTemplateName(valueOf(event))}
                                 />
                                 <s-stack direction="inline" gap="base">
                                     <s-button
                                         type="button"
-                                        disabled={templateFetcher.state !== "idle"}
+                                        disabled={
+                                            locked ||
+                                            !canTemplate ||
+                                            templateFetcher.state !== "idle"
+                                        }
                                         onClick={() =>
                                             templateFetcher.submit(
                                                 {
@@ -513,6 +575,9 @@ export default function TableDrawer() {
                                         {t("templates.create")}
                                     </s-button>
                                 </s-stack>
+                                {!canTemplate ? (
+                                    <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                                ) : null}
                             </s-stack>
 
                             <s-divider />
