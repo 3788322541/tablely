@@ -1,0 +1,64 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 3,
+            "cost": {
+              "amountPerQuantity": { "amount": "20.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "60.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/111",
+              "product": { "metafield": { "value": "{\"rows\":[]}" } }
+            }
+          },
+          {
+            "id": "gid://shopify/CartLine/1",
+            "quantity": 4,
+            "cost": {
+              "amountPerQuantity": { "amount": "30.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "120.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/222",
+              "product": { "metafield": { "value": "{\"rows\":[]}" } }
+            }
+          }
+        ],
+        "buyerIdentity": { "isAuthenticated": false, "customer": null }
+      },
+      "discount": {
+        "discountClasses": ["PRODUCT"],
+        "metafield": {
+          "value": "{\"mode\":\"mixmatch\",\"enabled\":true,\"groupTags\":[\"tier1\"],\"mixGroups\":[{\"key\":\"g1\",\"tiers\":[{\"qty\":5,\"percent\":15}],\"vids\":[\"111\",\"222\"]}]}"
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "productDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "Tablely mix & match",
+                "targets": [{ "cartLine": { "id": "gid://shopify/CartLine/0" } }],
+                "value": { "percentage": { "value": 15 } }
+              },
+              {
+                "message": "Tablely mix & match",
+                "targets": [{ "cartLine": { "id": "gid://shopify/CartLine/1" } }],
+                "value": { "percentage": { "value": 15 } }
+              }
+            ],
+            "selectionStrategy": "ALL"
+          }
+        }
+      ]
+    }
+  }
+}

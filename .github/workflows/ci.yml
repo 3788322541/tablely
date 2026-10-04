@@ -85,13 +85,14 @@ jobs:
           cache: npm
 
       # 改价是审核敏感点：每次改 Function 都必须重跑（§21.2）。
-      # M12 起把 tier / wholesale / mixmatch 三种 mode 的 fixture 补进 vitest 套件，
-      # 这里同时做一次 Function 构建，确保 input query 与 schema 可编译。
+      # M12 起把 tier / wholesale / mixmatch 三种 mode 的 fixture 补进**扩展自带**的 vitest 项目，
+      # 由 `test:function` 触发（跑 fixtures + 纯逻辑单测，并构建 wasm 验证 input query 与 schema 可编译）。
+      # 注意：`npm run test` 只覆盖 `app/**`，不含扩展，故这里必须用 `test:function`。
       - if: steps.filter.outputs.pricing == 'true'
         run: npm ci
 
       - if: steps.filter.outputs.pricing == 'true'
-        run: npm run test
+        run: npm run test:function
 
       - if: steps.filter.outputs.pricing == 'true'
         run: npx shopify app function build --path extensions/tablely-pricing

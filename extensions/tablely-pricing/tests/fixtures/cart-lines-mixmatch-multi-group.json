@@ -1,0 +1,47 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 5,
+            "cost": {
+              "amountPerQuantity": { "amount": "20.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "100.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/111",
+              "product": { "metafield": { "value": "{\"rows\":[]}" } }
+            }
+          }
+        ],
+        "buyerIdentity": { "isAuthenticated": false, "customer": null }
+      },
+      "discount": {
+        "discountClasses": ["PRODUCT"],
+        "metafield": {
+          "value": "{\"mode\":\"mixmatch\",\"enabled\":true,\"groupTags\":[],\"mixGroups\":[{\"key\":\"a\",\"tiers\":[{\"qty\":5,\"percent\":10}],\"vids\":[\"111\"]},{\"key\":\"b\",\"tiers\":[{\"qty\":3,\"price\":\"15.00\"}],\"vids\":[\"111\"]}]}"
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "productDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "Tablely mix & match",
+                "targets": [{ "cartLine": { "id": "gid://shopify/CartLine/0" } }],
+                "value": { "fixedAmount": { "amount": 25, "appliesToEachItem": false } }
+              }
+            ],
+            "selectionStrategy": "ALL"
+          }
+        }
+      ]
+    }
+  }
+}

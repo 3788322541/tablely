@@ -1,0 +1,26 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "t:name"
+handle = "tablely-pricing"
+type = "function"
+uid = "f8684cec-9f8d-267d-28c1-53ce8d0c6d8bf517d248"
+description = "t:description"
+
+  [[extensions.targeting]]
+  target = "cart.lines.discounts.generate.run"
+  input_query = "src/cart_lines_discounts_generate_run.graphql"
+  export = "cart-lines-discounts-generate-run"
+
+  # 客户标签作为输入变量（§2.4 / M12）：
+  # Customer 只提供 hasTags(tags:) 查询，候选标签必须由调用方给出。
+  # 变量值取自 **function owner（即 discount 节点）** 上的 JSON metafield：
+  #   namespace `$app:tablely` / key `variables` → {"customerTags":["tier1","tier2"]}
+  # JSON 顶层 key = 变量名。缺 key 时变量为 null（本查询声明为可空，安全降级为 []）。
+  [extensions.input.variables]
+  namespace = "$app:tablely"
+  key = "variables"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"

@@ -1,0 +1,59 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 3,
+            "cost": {
+              "amountPerQuantity": { "amount": "100.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "300.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/222",
+              "product": {
+                "metafield": {
+                  "value": "{\"rows\":[{\"vid\":\"222\",\"tiers\":[],\"wholesale\":[{\"group\":\"tier1\",\"price\":\"95.00\"},{\"group\":\"tier2\",\"price\":\"88.00\"}]}]}"
+                }
+              }
+            }
+          }
+        ],
+        "buyerIdentity": {
+          "isAuthenticated": true,
+          "customer": {
+            "hasTags": [
+              { "hasTag": true, "tag": "tier1" },
+              { "hasTag": true, "tag": "tier2" }
+            ]
+          }
+        }
+      },
+      "discount": {
+        "discountClasses": ["PRODUCT"],
+        "metafield": {
+          "value": "{\"mode\":\"wholesale\",\"enabled\":true,\"groupTags\":[\"tier1\",\"tier2\"],\"mixGroups\":[]}"
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "productDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "Tablely wholesale price",
+                "targets": [{ "cartLine": { "id": "gid://shopify/CartLine/0" } }],
+                "value": { "fixedAmount": { "amount": 36, "appliesToEachItem": false } }
+              }
+            ],
+            "selectionStrategy": "ALL"
+          }
+        }
+      ]
+    }
+  }
+}
