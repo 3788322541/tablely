@@ -10,9 +10,16 @@ import {
     buildShopSettingsValue,
     formatAmount,
     mergeColumns,
+    normalizeBrandColor,
+    normalizeDensity,
+    normalizeFeedbackStyle,
+    normalizeFont,
     normalizeLayout,
+    normalizeRadius,
     pickColumnOverrides,
+    sanitizeSelector,
     toShopSettingsContract,
+    toShopStyleContract,
     type ProductTableContract,
     type ShopSettingsRowLike,
 } from "./metafield.server";
@@ -31,6 +38,8 @@ function shopRow(overrides: Partial<ShopSettingsRowLike> = {}): ShopSettingsRowL
         hideNative: false,
         nativeSelector: null,
         orderMinAmount: null,
+        theme: {},
+        feedbackStyle: "inline",
         ...overrides,
     };
 }
@@ -135,6 +144,13 @@ describe("toShopSettingsContract", () => {
             tierModel: "percent",
             tierEnabled: true,
             hideNative: { enabled: false, selector: DEFAULT_NATIVE_SELECTOR },
+            style: {
+                brandColor: null,
+                radius: null,
+                density: "default",
+                font: "inherit",
+            },
+            feedbackStyle: "inline",
         });
     });
 
@@ -178,6 +194,89 @@ describe("toShopSettingsContract", () => {
     it("序列化结果是合法 JSON 且可原样解析回契约", () => {
         const contract = toShopSettingsContract(shopRow({ gateTags: ["vip"] }));
         expect(JSON.parse(buildShopSettingsValue(contract))).toEqual(contract);
+    });
+});
+
+/* ================= M8：Design 外观 / 反馈样式 / 选择器消毒 ================= */
+
+describe("Design 值归一化（M8）", () => {
+    it("品牌色：接受 #rgb / #rrggbb（大小写不敏感），统一小写 #rrggbb", () => {
+        expect(normalizeBrandColor("#ABC")).toBe("#aabbcc");
+        expect(normalizeBrandColor("abc123")).toBe("#abc123");
+        expect(normalizeBrandColor("  #A1B2C3  ")).toBe("#a1b2c3");
+    });
+
+    it("品牌色非法值一律落 null（绝不把脏值写进店面 CSS）", () => {
+        for (const value of ["", "red", "#12", "#12345", "#gggggg", 42, null, undefined]) {
+            expect(normalizeBrandColor(value)).toBeNull();
+        }
+    });
+
+    it("圆角：0–24 的整数；越界 / 非法落 null", () => {
+        expect(normalizeRadius(0)).toBe(0);
+        expect(normalizeRadius("12")).toBe(12);
+        expect(normalizeRadius(24)).toBe(24);
+        for (const value of [-1, 25, 999, "x", null, ""]) {
+            expect(normalizeRadius(value)).toBeNull();
+        }
+    });
+
+    it("密度 / 字体 / 反馈方式：白名单外退回默认", () => {
+        expect(normalizeDensity("comfortable")).toBe("comfortable");
+        expect(normalizeDensity("tiny")).toBe("default");
+        expect(normalizeFont("serif")).toBe("serif");
+        expect(normalizeFont("comic")).toBe("inherit");
+        expect(normalizeFeedbackStyle("toast")).toBe("toast");
+        expect(normalizeFeedbackStyle("popup")).toBe("inline");
+    });
+
+    it("DB 的 theme JSON 脏结构不抛错，全部回退默认", () => {
+        expect(toShopStyleContract(null)).toEqual({
+            brandColor: null,
+            radius: null,
+            density: "default",
+            font: "inherit",
+        });
+        expect(
+            toShopStyleContract({
+                brandColor: "#123456",
+                radius: 10,
+                density: "compact",
+                font: "system",
+            }),
+        ).toEqual({
+            brandColor: "#123456",
+            radius: 10,
+            density: "compact",
+            font: "system",
+        });
+    });
+});
+
+describe("选择器消毒（M8 安全底线 / §十二 验收 15）", () => {
+    it("剔除可逃出 CSS 规则的危险字符（{ } < > ; \\ 与换行）", () => {
+        expect(sanitizeSelector("form[action*=\"/cart/add\"]")).toBe(
+            'form[action*="/cart/add"]',
+        );
+        expect(sanitizeSelector(".a{}body{display:none}")).toBe(".abodydisplay:none");
+        expect(sanitizeSelector("a\nb\tc")).toBe("a b c");
+        expect(sanitizeSelector("<script>alert(1)</script>")).toBe(
+            "scriptalert(1)/script",
+        );
+    });
+
+    it("消毒后为空退回内置默认选择器", () => {
+        expect(sanitizeSelector("   ")).toBe(DEFAULT_NATIVE_SELECTOR);
+        expect(sanitizeSelector("{}")).toBe(DEFAULT_NATIVE_SELECTOR);
+        expect(sanitizeSelector(null)).toBe(DEFAULT_NATIVE_SELECTOR);
+    });
+
+    it("契约里的 hideNative.selector 恒为消毒结果（不原样透出商家输入）", () => {
+        const contract = toShopSettingsContract(
+            shopRow({ hideNative: true, nativeSelector: '.x{}.y' }),
+        );
+        expect(contract.hideNative.selector).toBe(".x.y");
+        expect(contract.hideNative.selector).not.toContain("{");
     });
 });
 

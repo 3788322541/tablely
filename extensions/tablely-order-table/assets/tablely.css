@@ -30,6 +30,9 @@
     --tablely-danger: currentColor;
     --tablely-danger: color-mix(in srgb, #d72c0d 72%, currentColor);
     --tablely-radius: 6px;
+    /* M8：品牌色默认跟随 currentColor（未设定时最兼容）；密度默认 1（Design 页可调） */
+    --tablely-brand: currentColor;
+    --tablely-density: 1;
 
     color: inherit;
     font-size: inherit;
@@ -67,7 +70,8 @@
 
 .tablely-table th,
 .tablely-table td {
-    padding: 0.6em 0.5em;
+    /* M8：密度倍率作用于内边距（compact / default / comfortable），默认 1 与旧版一致 */
+    padding: calc(0.6em * var(--tablely-density)) calc(0.5em * var(--tablely-density));
     border-bottom: 1px solid var(--tablely-line-soft);
     vertical-align: middle;
     text-align: start;
@@ -191,7 +195,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.5em;
-    padding: 0.7em;
+    padding: calc(0.7em * var(--tablely-density));
     border: 1px solid var(--tablely-line-soft);
     border-radius: var(--tablely-radius);
 }
@@ -413,6 +417,57 @@
     display: none;
 }
 
+/* -------------------- 反馈呈现方式（M8：inline / toast / both） -------------------- */
+
+/* toast 模式：行内容器**视觉**隐藏但仍在可访问性树里（读屏照常播报，B14）；
+   视觉反馈交给下面的浮层。刻意不用 display:none / visibility:hidden —— 那样读屏会静默。 */
+.tablely-root[data-tablely-feedback='toast'] .tablely-feedback {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+    white-space: nowrap;
+}
+
+.tablely-root[data-tablely-feedback='toast'] .tablely-feedback[hidden] {
+    display: none;
+}
+
+/* 浮层：固定定位，底色用系统色 `Canvas`（浅色 / 深色主题随 color-scheme 自适应），
+   不支持时退回 `--tablely-tint`（半透明，仍可读）。`aria-hidden`，只做视觉副本。 */
+.tablely-toast {
+    position: fixed;
+    inset-block-end: 1.2em;
+    inset-inline: 1em;
+    z-index: 9999;
+    width: fit-content;
+    max-width: min(90vw, 26em);
+    margin-inline: auto;
+    padding: 0.6em 1em;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: inherit;
+    background: var(--tablely-tint);
+    background: Canvas;
+    border: 1px solid var(--tablely-line);
+    border-radius: var(--tablely-radius);
+    box-shadow: 0 6px 20px color-mix(in srgb, currentColor 22%, transparent);
+    overflow-wrap: anywhere;
+}
+
+.tablely-toast[hidden] {
+    display: none;
+}
+
+.tablely-toast--error {
+    color: var(--tablely-danger);
+    border-color: var(--tablely-danger);
+}
+
 /* ------------------------------ 合计与起订金额 ------------------------------ */
 
 .tablely-footer {
@@ -459,13 +514,15 @@
     padding: 0.6em 1.4em;
     color: inherit;
     background: var(--tablely-tint);
-    border: 1px solid currentColor;
+    /* M8：品牌色（未设定 = currentColor，外观与旧版一致） */
+    border: 1px solid var(--tablely-brand);
     border-radius: var(--tablely-radius);
     cursor: pointer;
 }
 
 .tablely-submit:hover:not(:disabled) {
     background: var(--tablely-line-soft);
+    background: color-mix(in srgb, var(--tablely-brand) 14%, transparent);
 }
 
 .tablely-submit:disabled {
@@ -483,7 +540,8 @@
 .tablely-step:focus-visible,
 .tablely-add:focus-visible,
 .tablely-submit:focus-visible {
-    outline: 2px solid currentColor;
+    /* M8：描边用品牌色（未设定 = currentColor，随主题自适应） */
+    outline: 2px solid var(--tablely-brand);
     outline-offset: 2px;
 }
 

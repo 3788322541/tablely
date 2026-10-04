@@ -48,6 +48,9 @@
   var moneyFormat = (config && config.moneyFormat) || '${{amount}}';
   var addUrl = (config && config.cartAddUrl) || '/cart/add';
   var cartUrl = (config && config.cartUrl) || '/cart';
+  /* M8 反馈呈现方式：inline（默认）/ toast / both */
+  var feedbackStyle =
+    (config && config.settings && config.settings.feedbackStyle) || 'inline';
 
   /* ============================== 基础工具 ============================== */
 
@@ -295,6 +298,26 @@
       el.textContent = text;
       el.hidden = false;
     }
+    showToast(form, kind, text);
+  }
+
+  /* M8：浮层副本（`feedbackStyle = toast / both` 时才出现）。
+     行内容器始终更新（读屏真源），浮层只是 `aria-hidden` 的视觉镜像，3s 后自动消失。 */
+  var toastTimer = null;
+
+  function showToast(form, kind, text) {
+    if (feedbackStyle === 'inline') return;
+    var root = form.closest('.tablely-root') || document;
+    var toast = root.querySelector('[data-tablely-toast]');
+    if (!toast) return;
+    toast.textContent = text;
+    toast.className =
+      kind === 'error' ? 'tablely-toast tablely-toast--error' : 'tablely-toast';
+    toast.hidden = false;
+    if (toastTimer) window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(function () {
+      toast.hidden = true;
+    }, 3000);
   }
 
   function markFailures(failures) {
