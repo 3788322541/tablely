@@ -7,6 +7,7 @@ import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
 import { hasFeature } from "../plan";
 import { GATE_MODES } from "../design-choices";
+import { APPLICATION_FIELDS, countryName, type ApplicationPayload } from "../applications";
 import {
     collectTagOptions,
     createCustomerGroup,
@@ -16,6 +17,14 @@ import {
     saveGateSettings,
     updateCustomerGroup,
 } from "../services/wholesale.server";
+import {
+    approveWholesaleApplication,
+    listWholesaleApplications,
+    purgeExpiredRejectedApplications,
+    rejectWholesaleApplication,
+    saveWholesaleApplicationNote,
+} from "../services/applications.server";
+import { APPLY_PATH } from "../services/appProxy.server";
 import { isTablelyError, resolvePlan } from "../services/tables.server";
 
 /**
@@ -97,10 +106,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { session } = await authenticate.admin(request);
     const locale = localeFromRequest(request);
 
-    const [plan, gate, groups] = await Promise.all([
+    // 申请保留期清理（§8.1：被拒 90 天）：就近 best-effort，不引入独立调度器
+    await purgeExpiredRejectedApplications(session.shop).catch((error) => {
+        console.error("[tablely] 清理过期申请失败:", error);
+    });
+
+    const [plan, gate, groups, applications] = await Promise.all([
         resolvePlan(session.shop),
         getGateSettings(session.shop),
         listCustomerGroups(session.shop),
+        listWholesaleApplications(session.shop),
     ]);
 
     return {
@@ -108,6 +123,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         plan,
         gate,
         groups,
+        applications: applications.map((application) => ({
+            ...application,
+            createdAt: application.createdAt.toISOString(),
+        })),
+        pendingCount: applications.filter((application) => application.status === "pending")
+            .length,
+        // 申请表单公开地址（§15.2）：用于空态「复制表单链接」与列表顶部展示
+        formLink: `https://${session.shop}${APPLY_PATH}`,
+        // 店铺 handle：审批通过后拼「打开该客户页」链接
+        shopHandle: session.shop.replace(/\.myshopify\.com$/, ""),
         // 门控标签可选集：已保存标签 ∪ 现有客户组标签（避免手打标签拼错，B11）
         tagOptions: collectTagOptions(gate, groups),
     };
@@ -163,6 +188,33 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             };
         }
 
+        if (intent === "approve-application") {
+            const result = await approveWholesaleApplication({
+                shop: session.shop,
+                id: String(formData.get("id") ?? ""),
+            });
+            // 只回标签名；**不写客户 tag**（§15.2），由商家在客户页手动添加
+            return { ok: true as const, intent, toastKey: "toast.saved", tag: result.tag };
+        }
+
+        if (intent === "reject-application") {
+            await rejectWholesaleApplication({
+                shop: session.shop,
+                id: String(formData.get("id") ?? ""),
+                note: formData.get("note"),
+            });
+            return { ok: true as const, intent, toastKey: "toast.updated" };
+        }
+
+        if (intent === "save-application-note") {
+            await saveWholesaleApplicationNote({
+                shop: session.shop,
+                id: String(formData.get("id") ?? ""),
+                note: formData.get("note"),
+            });
+            return { ok: true as const, intent, toastKey: "toast.saved" };
+        }
+
         return { ok: false as const, intent, errorKey: "error.saveFailed" };
     } catch (error) {
         if (isTablelyError(error)) {
@@ -174,15 +226,27 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function WholesalePage() {
-    const { locale, plan, gate, groups, tagOptions } = useLoaderData<typeof loader>();
+    const {
+        locale,
+        plan,
+        gate,
+        groups,
+        tagOptions,
+        applications,
+        pendingCount,
+        formLink,
+        shopHandle,
+    } = useLoaderData<typeof loader>();
     const t = getT(locale);
     const shopify = useAppBridge();
 
     const canGate = hasFeature(plan, "gating");
     const canGroups = hasFeature(plan, "customer_groups");
+    const canApprove = hasFeature(plan, "approvals");
 
     const gateFetcher = useFetcher<typeof action>();
     const groupFetcher = useFetcher<typeof action>();
+    const applicationFetcher = useFetcher<typeof action>();
 
     const [mode, setMode] = useState<string>(gate.mode);
     const [tags, setTags] = useState<string[]>(gate.tags);
@@ -194,6 +258,13 @@ export default function WholesalePage() {
     const [editTag, setEditTag] = useState("");
     const [editNote, setEditNote] = useState("");
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    // 申请审批（M11）：展开详情 / 拒绝原因 / 备注编辑 / 刚通过的申请（给复制标签引导）
+    const [expandedId, setExpandedId] = useState<string | null>(null);
+    const [rejectId, setRejectId] = useState<string | null>(null);
+    const [rejectNote, setRejectNote] = useState("");
+    const [noteId, setNoteId] = useState<string | null>(null);
+    const [noteDraft, setNoteDraft] = useState("");
+    const [approveId, setApproveId] = useState<string | null>(null);
 
     useEffect(() => {
         setMode(gate.mode);
@@ -202,6 +273,8 @@ export default function WholesalePage() {
 
     const gateFailed = gateFetcher.data?.ok === false ? gateFetcher.data : null;
     const groupFailed = groupFetcher.data?.ok === false ? groupFetcher.data : null;
+    const applicationFailed =
+        applicationFetcher.data?.ok === false ? applicationFetcher.data : null;
 
     useEffect(() => {
         if (gateFetcher.data?.ok) shopify.toast.show(t(gateFetcher.data.toastKey));
@@ -221,6 +294,73 @@ export default function WholesalePage() {
         if (data.intent === "delete-group") setDeleteId(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupFetcher.data]);
+
+    useEffect(() => {
+        const data = applicationFetcher.data;
+        if (!data?.ok) return;
+        shopify.toast.show(t(data.toastKey));
+        if (data.intent === "reject-application") {
+            setRejectId(null);
+            setRejectNote("");
+        }
+        if (data.intent === "save-application-note") setNoteId(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [applicationFetcher.data]);
+
+    /** 复制到剪贴板（空态 CTA「复制表单链接」/ 审批后「复制标签」「复制邮箱」） */
+    const copyText = async (value: string) => {
+        try {
+            await navigator.clipboard.writeText(value);
+            shopify.toast.show(t("applications.copied"));
+        } catch (error) {
+            console.error("[tablely] 复制失败:", error);
+        }
+    };
+
+    /** 申请详情：逐字段把 payload 渲染成人话（国家/选项走 i18n，脏值兜底为 —） */
+    const detailRows = (payload: ApplicationPayload) => {
+        const source = payload as unknown as Record<string, unknown>;
+        return APPLICATION_FIELDS.filter((field) => field.key !== "privacyConsent").map(
+            (field) => {
+                const raw = source[field.key];
+                let text: string;
+                if (field.key === "country") {
+                    text = raw ? countryName(String(raw), locale) : "—";
+                } else if (field.key === "businessTypes" || field.key === "channels") {
+                    const list = Array.isArray(raw) ? raw.map(String) : [];
+                    text = list.length
+                        ? list
+                            .map((value) => t(`${field.optionKeyPrefix}.${value}`))
+                            .join(", ")
+                        : "—";
+                } else if (
+                    field.key === "brandExperience" ||
+                    field.key === "monthlyVolume"
+                ) {
+                    text = raw ? t(`${field.optionKeyPrefix}.${raw}`) : "—";
+                } else {
+                    text = raw ? String(raw) : "—";
+                }
+                return { key: field.key, label: t(field.labelKey), text };
+            },
+        );
+    };
+
+    /** 审批通过后「打开该客户页」（仅当申请带了 logged_in_customer_id） */
+    const customerUrl = (customerId: string) =>
+        `https://admin.shopify.com/store/${shopHandle}/customers/${customerId}`;
+
+    const statusTone = (status: string) =>
+        status === "approved" ? "success" : status === "rejected" ? "critical" : "info";
+
+    const approvedApp = approveId
+        ? applications.find((application) => application.id === approveId) ?? null
+        : null;
+    const approvedTag =
+        applicationFetcher.data?.ok &&
+        applicationFetcher.data.intent === "approve-application"
+            ? applicationFetcher.data.tag
+            : null;
 
     const startEdit = (group: (typeof groups)[number]) => {
         setDeleteId(null);
@@ -242,6 +382,9 @@ export default function WholesalePage() {
             ) : null}
             {groupFailed ? (
                 <s-banner tone="critical">{t(groupFailed.errorKey)}</s-banner>
+            ) : null}
+            {applicationFailed ? (
+                <s-banner tone="critical">{t(applicationFailed.errorKey)}</s-banner>
             ) : null}
 
             {/* ① 门控（Pro）：模式 + 合格客户标签（§1.4 #19 / §五 gate） */}
@@ -567,14 +710,315 @@ export default function WholesalePage() {
                 </s-stack>
             </s-section>
 
-            {/* ⑥ 申请（Free 可用，M11 落地）：§6.1 空态 */}
+            {/* ⑥ 申请（Free 可提交/只读，Pro 可审批，M11 / §15.2）：列表 + 审批流 */}
             <s-section heading={t("wholesale.applications")}>
-                <PlannedEmptyState
-                    heading={t("empty.applications.title")}
-                    body={t("empty.applications.body")}
-                    cta={t("empty.applications.cta")}
-                    hint={t("wholesale.comingSoon")}
-                />
+                <s-stack direction="block" gap="base">
+                    <s-text color="subdued">{t("wholesale.applicationsHint")}</s-text>
+                    {!canApprove ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
+                    {pendingCount > 0 ? (
+                        <s-text type="strong">
+                            {t("applications.pendingCount", { n: pendingCount })}
+                        </s-text>
+                    ) : null}
+
+                    {/* 表单公开地址：空态与列表都需要可复制（§6.1 / §15.2） */}
+                    <s-box padding="base" border="base" borderRadius="base">
+                        <s-stack
+                            direction="inline"
+                            gap="base"
+                            alignItems="center"
+                            justifyContent="space-between"
+                        >
+                            <s-text color="subdued">{formLink}</s-text>
+                            <s-button onClick={() => copyText(formLink)}>
+                                {t("applications.copyLink")}
+                            </s-button>
+                        </s-stack>
+                    </s-box>
+
+                    {applications.length === 0 ? (
+                        <s-empty-state heading={t("empty.applications.title")}>
+                            <s-text slot="subheading">{t("empty.applications.body")}</s-text>
+                            <s-button
+                                slot="primary-action"
+                                variant="primary"
+                                onClick={() => copyText(formLink)}
+                            >
+                                {t("empty.applications.cta")}
+                            </s-button>
+                        </s-empty-state>
+                    ) : (
+                        <s-stack direction="block" gap="base">
+                            {applications.map((application) => (
+                                <s-box
+                                    key={application.id}
+                                    padding="base"
+                                    border="base"
+                                    borderRadius="base"
+                                >
+                                    <s-stack direction="block" gap="small">
+                                        <s-stack
+                                            direction="inline"
+                                            gap="base"
+                                            alignItems="center"
+                                            justifyContent="space-between"
+                                        >
+                                            <s-stack
+                                                direction="inline"
+                                                gap="base"
+                                                alignItems="center"
+                                            >
+                                                <s-text type="strong">
+                                                    {`${application.payload.firstName} ${application.payload.lastName}`.trim() ||
+                                                        application.payload.email}
+                                                </s-text>
+                                                <s-badge tone={statusTone(application.status)}>
+                                                    {t(`applications.status.${application.status}`)}
+                                                </s-badge>
+                                            </s-stack>
+                                            <s-text color="subdued">
+                                                {new Date(
+                                                    application.createdAt,
+                                                ).toLocaleDateString(locale, {
+                                                    year: "numeric",
+                                                    month: "short",
+                                                    day: "numeric",
+                                                })}
+                                            </s-text>
+                                        </s-stack>
+                                        <s-text color="subdued">
+                                            {[
+                                                application.payload.company,
+                                                application.payload.email,
+                                                countryName(application.payload.country, locale),
+                                            ]
+                                                .filter(Boolean)
+                                                .join(" · ")}
+                                        </s-text>
+
+                                        <s-stack direction="inline" gap="base">
+                                            <s-button
+                                                onClick={() =>
+                                                    setExpandedId(
+                                                        expandedId === application.id
+                                                            ? null
+                                                            : application.id,
+                                                    )
+                                                }
+                                            >
+                                                {expandedId === application.id
+                                                    ? t("applications.hideDetails")
+                                                    : t("applications.showDetails")}
+                                            </s-button>
+                                            {canApprove ? (
+                                                <>
+                                                    {application.status === "pending" ? (
+                                                        <>
+                                                            <s-button
+                                                                variant="primary"
+                                                                disabled={
+                                                                    applicationFetcher.state !==
+                                                                    "idle"
+                                                                }
+                                                                onClick={() => {
+                                                                    setRejectId(null);
+                                                                    setApproveId(application.id);
+                                                                    applicationFetcher.submit(
+                                                                        {
+                                                                            intent: "approve-application",
+                                                                            id: application.id,
+                                                                        },
+                                                                        { method: "post" },
+                                                                    );
+                                                                }}
+                                                            >
+                                                                {t("applications.approve")}
+                                                            </s-button>
+                                                            <s-button
+                                                                tone="critical"
+                                                                disabled={
+                                                                    applicationFetcher.state !==
+                                                                    "idle"
+                                                                }
+                                                                onClick={() => {
+                                                                    setNoteId(null);
+                                                                    setRejectId(application.id);
+                                                                    setRejectNote("");
+                                                                }}
+                                                            >
+                                                                {t("applications.reject")}
+                                                            </s-button>
+                                                        </>
+                                                    ) : null}
+                                                    <s-button
+                                                        onClick={() => {
+                                                            setRejectId(null);
+                                                            setNoteId(application.id);
+                                                            setNoteDraft(
+                                                                application.note ?? "",
+                                                            );
+                                                        }}
+                                                    >
+                                                        {t("applications.note")}
+                                                    </s-button>
+                                                </>
+                                            ) : null}
+                                        </s-stack>
+
+                                        {expandedId === application.id ? (
+                                            <s-box
+                                                padding="small"
+                                                border="base"
+                                                borderRadius="base"
+                                            >
+                                                <s-stack direction="block" gap="small">
+                                                    {detailRows(application.payload).map((row) => (
+                                                        <s-stack
+                                                            key={row.key}
+                                                            direction="inline"
+                                                            gap="base"
+                                                            alignItems="center"
+                                                        >
+                                                            <s-text color="subdued">
+                                                                {row.label}
+                                                            </s-text>
+                                                            <s-text>{row.text}</s-text>
+                                                        </s-stack>
+                                                    ))}
+                                                    {application.note ? (
+                                                        <s-text color="subdued">
+                                                            {t("applications.savedNote", {
+                                                                note: application.note,
+                                                            })}
+                                                        </s-text>
+                                                    ) : null}
+                                                </s-stack>
+                                            </s-box>
+                                        ) : null}
+
+                                        {rejectId === application.id ? (
+                                            <s-banner tone="warning">
+                                                <s-stack direction="block" gap="base">
+                                                    <s-text-field
+                                                        label={t("applications.rejectReason")}
+                                                        value={rejectNote}
+                                                        onChange={(event) =>
+                                                            setRejectNote(valueOf(event))
+                                                        }
+                                                    />
+                                                    <s-stack direction="inline" gap="base">
+                                                        <s-button
+                                                            variant="primary"
+                                                            tone="critical"
+                                                            disabled={
+                                                                applicationFetcher.state !==
+                                                                "idle"
+                                                            }
+                                                            onClick={() =>
+                                                                applicationFetcher.submit(
+                                                                    {
+                                                                        intent: "reject-application",
+                                                                        id: application.id,
+                                                                        note: rejectNote,
+                                                                    },
+                                                                    { method: "post" },
+                                                                )
+                                                            }
+                                                        >
+                                                            {t("applications.rejectConfirm")}
+                                                        </s-button>
+                                                        <s-button
+                                                            onClick={() => setRejectId(null)}
+                                                        >
+                                                            {t("applications.cancel")}
+                                                        </s-button>
+                                                    </s-stack>
+                                                </s-stack>
+                                            </s-banner>
+                                        ) : null}
+
+                                        {noteId === application.id ? (
+                                            <s-stack direction="block" gap="base">
+                                                <s-text-field
+                                                    label={t("applications.note")}
+                                                    value={noteDraft}
+                                                    onChange={(event) =>
+                                                        setNoteDraft(valueOf(event))
+                                                    }
+                                                />
+                                                <s-stack direction="inline" gap="base">
+                                                    <s-button
+                                                        variant="primary"
+                                                        disabled={
+                                                            applicationFetcher.state !== "idle"
+                                                        }
+                                                        onClick={() =>
+                                                            applicationFetcher.submit(
+                                                                {
+                                                                    intent: "save-application-note",
+                                                                    id: application.id,
+                                                                    note: noteDraft,
+                                                                },
+                                                                { method: "post" },
+                                                            )
+                                                        }
+                                                    >
+                                                        {t("applications.saveNote")}
+                                                    </s-button>
+                                                    <s-button onClick={() => setNoteId(null)}>
+                                                        {t("applications.cancel")}
+                                                    </s-button>
+                                                </s-stack>
+                                            </s-stack>
+                                        ) : null}
+                                    </s-stack>
+                                </s-box>
+                            ))}
+                        </s-stack>
+                    )}
+
+                    {/* 审批通过后的「手动打标签」引导（§15.2 关键取舍：应用不写客户 tag） */}
+                    {approvedApp ? (
+                        <s-banner tone="success">
+                            <s-stack direction="block" gap="base">
+                                <s-text>{t("applications.approveNext")}</s-text>
+                                <s-stack direction="inline" gap="base" alignItems="center">
+                                    <s-badge tone="info">
+                                        {approvedTag ?? "tablely-wholesale"}
+                                    </s-badge>
+                                    <s-button
+                                        onClick={() =>
+                                            copyText(approvedTag ?? "tablely-wholesale")
+                                        }
+                                    >
+                                        {t("applications.copyTag")}
+                                    </s-button>
+                                    {approvedApp.customerId ? (
+                                        <s-link
+                                            href={customerUrl(approvedApp.customerId)}
+                                            target="_blank"
+                                        >
+                                            {t("applications.openCustomer")}
+                                        </s-link>
+                                    ) : (
+                                        <s-button
+                                            onClick={() =>
+                                                copyText(approvedApp.payload.email)
+                                            }
+                                        >
+                                            {t("applications.copyEmail")}
+                                        </s-button>
+                                    )}
+                                </s-stack>
+                                <s-text color="subdued">
+                                    {t("applications.noAutoWrite")}
+                                </s-text>
+                            </s-stack>
+                        </s-banner>
+                    ) : null}
+                </s-stack>
             </s-section>
         </s-page>
     );

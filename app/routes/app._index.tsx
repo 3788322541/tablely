@@ -4,6 +4,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { ensureTablelySetup } from "../services/settings.server";
 import { getWinbackSummary, markWinbackSeen, readPlanStatus } from "../services/billing.server";
+import { countPendingApplications } from "../services/applications.server";
 import { getT, localeFromRequest, type Locale } from "../i18n";
 
 /**
@@ -26,12 +27,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.error("[tablely] Overview 安装自愈失败:", error);
     }
 
-    const [plan, winback] = await Promise.all([
+    const [plan, winback, pendingApplications] = await Promise.all([
         readPlanStatus(session.shop),
         getWinbackSummary(session.shop),
+        countPendingApplications(session.shop),
     ]);
 
-    return { locale: localeFromRequest(request), plan, winback };
+    return { locale: localeFromRequest(request), plan, winback, pendingApplications };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -46,7 +48,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function OverviewPage() {
-    const { locale, plan, winback } = useLoaderData<typeof loader>();
+    const { locale, plan, winback, pendingApplications } = useLoaderData<typeof loader>();
     const t = getT(locale as Locale);
     const fetcher = useFetcher<typeof action>();
 
@@ -67,7 +69,23 @@ export default function OverviewPage() {
                 </s-section>
             ) : null}
 
-            {/* ② 降级说明卡：首次打开后台只提示一次，逐条说清代价 */}
+            {/* ② 待审批申请入口（M11 / §15.2：只做应用内通知，不发邮件） */}
+            {pendingApplications > 0 ? (
+                <s-section>
+                    <s-banner tone="info">
+                        <s-stack direction="inline" gap="base" alignItems="center">
+                            <s-text>
+                                {t("overview.pendingApplications", { n: pendingApplications })}
+                            </s-text>
+                            <s-link href="/app/wholesale">
+                                {t("overview.reviewApplications")}
+                            </s-link>
+                        </s-stack>
+                    </s-banner>
+                </s-section>
+            ) : null}
+
+            {/* ③ 降级说明卡：首次打开后台只提示一次，逐条说清代价 */}
             {plan.plan === "free" && winback.showSummary ? (
                 <s-section>
                     <s-box padding="base" border="base" borderRadius="base">

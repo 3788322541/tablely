@@ -40,5 +40,15 @@ api_version = "2026-10"
 [auth]
 redirect_urls = [ "https://tablely.zhenjunit.com/auth/callback" ]
 
+[app_proxy]
+# 分销商申请表单（M11 / §15.2）：顾客访问 https://<shop>/apps/tablely/apply，
+# Shopify 转发+签名到 https://tablely.zhenjunit.com/proxy/apply?...
+# 回源页（app/routes/proxy.apply.tsx）用 SHOPIFY_API_SECRET 自校验签名，失败 401 不落库。
+# 公开路径 = /{prefix}/{subpath}；prefix 取值受 Shopify 白名单限制（apps/a/community/tools），
+# 故固定 prefix="apps"，用 subpath="tablely" 表达应用专属段 → /apps/tablely/apply。
+url = "https://tablely.zhenjunit.com/proxy"
+subpath = "tablely"
+prefix = "apps"
+
 [build]
 automatically_update_urls_on_dev = true
