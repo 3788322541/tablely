@@ -18,6 +18,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { MAX_TABLE_ROWS } from "../perf-limits";
 import {
+    buildMatrix,
     buildProductTableValue,
     deleteProductTableMetafield,
     getShopInfo,
@@ -25,6 +26,7 @@ import {
     pickColumnOverrides,
     syncProductTableMetafield,
     type GraphqlAdmin,
+    type ProductOptionLike,
     type TableContractRow,
 } from "./metafield.server";
 
@@ -478,8 +480,9 @@ export async function pushProductTableMetafield(input: {
     });
     if (!table) throw new TablelyError("error.notFound");
 
-    const [variants, ruleRows] = await Promise.all([
+    const [variants, options, ruleRows] = await Promise.all([
         listProductVariants(input.admin, input.productId),
+        listProductOptions(input.admin, input.productId),
         prisma.variantRule.findMany({
             where: { shop: input.shop, productId: input.productId },
         }),
@@ -506,8 +509,14 @@ export async function pushProductTableMetafield(input: {
                     ? table.orderMinAmount.toFixed(2)
                     : null,
                 rows: buildContractRows(variants, ruleValues),
-                // 矩阵坐标属 M6：M4 只保证契约字段存在且为 null，Liquid 走表格布局
-                matrix: null,
+                // M6：恰好 2 个 option 轴才生成矩阵；否则 null，Liquid 自动降级为表格（§十三 C9）
+                matrix: buildMatrix(
+                    options,
+                    variants.map((variant) => ({
+                        vid: gidToNumericId(variant.id),
+                        options: variant.options,
+                    })),
+                ),
             }),
         );
     } catch (error) {
@@ -787,6 +796,8 @@ export type ShopifyVariantRow = {
     id: string;
     title: string;
     sku: string | null;
+    /** 变体所选 option（M6 矩阵布局的坐标来源；`selectedOptions`） */
+    options: { name: string; value: string }[];
 };
 
 const PRODUCT_VARIANTS_QUERY = `#graphql
@@ -797,6 +808,10 @@ const PRODUCT_VARIANTS_QUERY = `#graphql
           id
           title
           sku
+          selectedOptions {
+            name
+            value
+          }
         }
       }
     }
@@ -804,7 +819,7 @@ const PRODUCT_VARIANTS_QUERY = `#graphql
 `;
 
 /**
- * 商品的变体列表（Drawer 的规则表）。
+ * 商品的变体列表（Drawer 的规则表 + M6 矩阵坐标）。
  * 单次取前 100 个：与 P1「单商品订购表行数 ≤ 100」为同一上限。
  */
 export async function listProductVariants(
@@ -819,12 +834,79 @@ export async function listProductVariants(
     assertNoGraphqlErrors(json, "listProductVariants");
 
     const nodes = (json as {
-        data?: { product?: { variants?: { nodes?: { id: string; title?: string; sku?: string | null }[] } } };
+        data?: {
+            product?: {
+                variants?: {
+                    nodes?: {
+                        id: string;
+                        title?: string;
+                        sku?: string | null;
+                        selectedOptions?: { name?: string; value?: string }[];
+                    }[];
+                };
+            };
+        };
     })?.data?.product?.variants?.nodes ?? [];
 
     return nodes.map((node) => ({
         id: node.id,
         title: node.title ?? "",
         sku: node.sku ?? null,
+        options: (node.selectedOptions ?? [])
+            .filter(
+                (option): option is { name: string; value: string } =>
+                    Boolean(option?.name) && typeof option.value === "string",
+            )
+            .map((option) => ({ name: option.name, value: option.value })),
     }));
+}
+
+const PRODUCT_OPTIONS_QUERY = `#graphql
+  query TablelyProductOptions($id: ID!) {
+    product(id: $id) {
+      options {
+        name
+        optionValues {
+          name
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * 商品的 option 轴（M6 矩阵布局；顺序即 Shopify 的 option 顺序，前两个成行 / 列）。
+ * 与 `listProductVariants` 分开取，是为了不改动既有的变体返回结构（Drawer 复用）。
+ */
+export async function listProductOptions(
+    admin: GraphqlAdmin,
+    productId: string,
+): Promise<ProductOptionLike[]> {
+    const res = await admin.graphql(PRODUCT_OPTIONS_QUERY, {
+        variables: { id: productId },
+    });
+    const json = await res.json();
+    assertNoGraphqlErrors(json, "listProductOptions");
+
+    const nodes = (json as {
+        data?: {
+            product?: {
+                options?: {
+                    name?: string;
+                    optionValues?: { name?: string }[];
+                }[];
+            };
+        };
+    })?.data?.product?.options ?? [];
+
+    return nodes
+        .filter((option): option is { name: string; optionValues?: { name?: string }[] } =>
+            Boolean(option?.name),
+        )
+        .map((option) => ({
+            name: option.name,
+            values: (option.optionValues ?? [])
+                .map((value) => value?.name)
+                .filter((name): name is string => typeof name === "string"),
+        }));
 }

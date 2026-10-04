@@ -5,6 +5,7 @@ import {
     DEFAULT_COLUMNS,
     DEFAULT_LAYOUT,
     DEFAULT_NATIVE_SELECTOR,
+    buildMatrix,
     buildProductTableValue,
     buildShopSettingsValue,
     formatAmount,
@@ -237,6 +238,69 @@ describe("buildProductTableValue（A1：不含价格与库存）", () => {
     it("整个 JSON 文本里不出现库存字段名（防止缓存实时库存）", () => {
         const text = buildProductTableValue(contract);
         expect(text).not.toContain("priceIncl");
+        expect(text).not.toContain("\"stock\"");
+        expect(text).not.toContain("inventory_quantity");
+    });
+});
+
+/* =================== 矩阵坐标（M6：按 option 交叉） =================== */
+
+describe("buildMatrix（矩阵布局的 option 交叉）", () => {
+    // 参考场景：规格（M / XL）× 包装重量（1kg / 5kg）—— §2.3 图
+    const options = [
+        { name: "Size", values: ["M", "XL"] },
+        { name: "Pack", values: ["1kg", "5kg"] },
+    ];
+    const variant = (vid: string, size: string, pack: string) => ({
+        vid,
+        options: [
+            { name: "Size", value: size },
+            { name: "Pack", value: pack },
+        ],
+    });
+    const variants = [
+        variant("1", "M", "1kg"),
+        variant("2", "M", "5kg"),
+        variant("3", "XL", "1kg"),
+        variant("4", "XL", "5kg"),
+    ];
+
+    it("行轴 = 第 1 个 option，列轴 = 第 2 个 option，格子给出 x/y 坐标", () => {
+        const matrix = buildMatrix(options, variants);
+        expect(matrix).not.toBeNull();
+        expect(matrix?.yAxis).toEqual({ name: "Size", values: ["M", "XL"] });
+        expect(matrix?.xAxis).toEqual({ name: "Pack", values: ["1kg", "5kg"] });
+        // M/1kg → y0 x0；XL/5kg → y1 x1
+        expect(matrix?.cells).toEqual([
+            { x: 0, y: 0, vid: "1" },
+            { x: 1, y: 0, vid: "2" },
+            { x: 0, y: 1, vid: "3" },
+            { x: 1, y: 1, vid: "4" },
+        ]);
+    });
+
+    it("option 轴不是恰好 2 个 → null（Liquid 侧降级为表格，§1.4 #3）", () => {
+        expect(buildMatrix([], variants)).toBeNull();
+        expect(buildMatrix([options[0]!], variants)).toBeNull();
+        expect(buildMatrix([...options, { name: "Color", values: ["red"] }], variants)).toBeNull();
+    });
+
+    it("轴为空取值 / 没有可用变体 → null（不生成空矩阵）", () => {
+        expect(buildMatrix([{ name: "Size", values: [] }, options[1]!], variants)).toBeNull();
+        expect(buildMatrix(options, [])).toBeNull();
+    });
+
+    it("变体缺某个轴上的取值时跳过该格子（不伪造坐标）", () => {
+        const matrix = buildMatrix(options, [
+            variant("1", "M", "1kg"),
+            { vid: "9", options: [{ name: "Size", value: "M" }] },
+        ]);
+        expect(matrix?.cells).toEqual([{ x: 0, y: 0, vid: "1" }]);
+    });
+
+    it("只含配置类数据，序列化后不出现价格 / 库存字段（A1）", () => {
+        const text = JSON.stringify(buildMatrix(options, variants));
+        expect(text).not.toContain("\"price\"");
         expect(text).not.toContain("\"stock\"");
         expect(text).not.toContain("inventory_quantity");
     });

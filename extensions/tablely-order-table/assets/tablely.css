@@ -165,6 +165,119 @@
     display: none;
 }
 
+/* ===================== 网格 / 列表布局（M6，同一份数据） ===================== */
+
+/* 容器：网格用 CSS Grid 自适应列宽；列表用纵向 Flex。零额外数据成本（§2.3）。 */
+.tablely-items {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.tablely-items--grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16em, 1fr));
+    gap: 0.8em;
+}
+
+.tablely-items--list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+}
+
+/* 条目：共用卡片底线（边框 / 圆角 / 内距），列表行改为横向排列 */
+.tablely-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    padding: 0.7em;
+    border: 1px solid var(--tablely-line-soft);
+    border-radius: var(--tablely-radius);
+}
+
+.tablely-item--list {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.tablely-item--list .tablely-product {
+    flex: 1 1 12em;
+}
+
+/* 卡片 / 列表里的价格 · 库存：带可见列名（无表头时也能读懂，B14） */
+.tablely-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2em 1em;
+    font-variant-numeric: tabular-nums;
+}
+
+.tablely-meta-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4em;
+}
+
+.tablely-meta-label {
+    font-size: 0.82em;
+    opacity: 0.7;
+}
+
+/* 数量 + 加购：列表内联靠右，卡片底部一行 */
+.tablely-item-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5em;
+    margin-top: auto;
+}
+
+.tablely-item--list .tablely-item-actions {
+    margin-top: 0;
+}
+
+/* 非表格布局里的加购按钮容器：纯 JS 部件，就绪前不显示 */
+.tablely-action {
+    display: none;
+}
+
+/* ===================== 矩阵布局（M6，按 option 交叉） ===================== */
+
+/* 矩阵以**语义化表格**渲染：行 = 第 1 个 option，列 = 第 2 个 option，
+   `th[scope]` 在任何宽度下都在，故不依赖视觉坐标、无需响应式降级（B14）。 */
+.tablely-matrix-th {
+    text-align: center;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.tablely-matrix-corner {
+    border-bottom: 1px solid var(--tablely-line);
+}
+
+.tablely-matrix-cell {
+    vertical-align: top;
+    text-align: center;
+}
+
+.tablely-matrix-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35em;
+    min-width: 8em;
+}
+
+.tablely-matrix-price {
+    font-variant-numeric: tabular-nums;
+}
+
+.tablely-matrix-empty {
+    opacity: 0.5;
+}
+
 /* ------------------------------ 数量步进器 ------------------------------ */
 
 .tablely-stepper {
@@ -363,12 +476,21 @@
     display: table-cell;
 }
 
+/* 网格 / 列表 / 矩阵里的加购按钮容器（非 <td>，不能用 table-cell） */
+[data-tablely-ready='true'] .tablely-action {
+    display: inline-flex;
+    align-items: center;
+}
+
 [data-tablely-ready='true'] .tablely-summary {
     display: flex;
 }
 
 /* ------------------------------ 窄屏 ------------------------------ */
 
+/* 手机端紧凑列（#18，Free）：按**列优先级自适应**，由低优先级开始逐级收紧 ——
+   产品 / 数量 / 加购（必留）> 单价 > 库存 > SKU / ID > 缩略图。
+   网格 / 列表 / 矩阵本身是自适应堆叠，无需这套规则（矩阵仍是带表头的表格，B14）。 */
 @media screen and (max-width: 600px) {
 
     .tablely-table th,
@@ -388,5 +510,28 @@
 
     .tablely-qty {
         width: 4em;
+    }
+
+    /* 先去掉最低优先级的 SKU / ID 副行，把宽度让给名称与价格 */
+    .tablely-sku,
+    .tablely-vid {
+        display: none;
+    }
+
+    .tablely-items--grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media screen and (max-width: 480px) {
+
+    /* 再收起库存列（表格布局）；单价与名称仍保留 */
+    .tablely-root[data-tablely-layout='table'] .tablely-th-stock,
+    .tablely-root[data-tablely-layout='table'] .tablely-cell-stock {
+        display: none;
+    }
+
+    .tablely-matrix-item {
+        min-width: 6em;
     }
 }
