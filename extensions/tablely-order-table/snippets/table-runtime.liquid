@@ -46,3 +46,13 @@
     null
   {%- endif -%}
 </script>
+
+{%- comment %}
+  M8 反馈浮层（`feedbackStyle = toast / both` 时由 JS 填入文本并自动消失）。
+  纯装饰副本：**`aria-hidden="true"`**，读屏播报一律走行内那对
+  `role="status"` / `role="alert"` 容器，避免同一句被念两遍（B14）。
+  `toast` 模式下 CSS 把那对容器视觉隐藏（保留在可访问性树里）。
+{%- endcomment -%}
+{%- if tly_settings -%}
+  <div class="tablely-toast" data-tablely-toast hidden aria-hidden="true"></div>
+{%- endif -%}

@@ -56,8 +56,10 @@
   <div
     class="tablely-root"
     data-tablely-layout="{{ tly_layout }}"
+    data-tablely-feedback="{{ tly_settings.feedbackStyle | default: 'inline' }}"
     {{ block.shopify_attributes }}
   >
+    {% render 'table-style', tly_settings: tly_settings %}
     {% render 'table-runtime', tly_settings: tly_settings %}
     {% render 'table-markup', tly_settings: tly_settings, tly_tbl: tly_tbl, tly_layout: tly_layout %}
   </div>

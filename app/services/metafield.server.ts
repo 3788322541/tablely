@@ -19,6 +19,21 @@
  * 金额一律用十进制**字符串**（`"1000.00"`），避免浮点误差。
  */
 
+import {
+    DEFAULT_NATIVE_SELECTOR,
+    DENSITIES,
+    FEEDBACK_STYLES,
+    FONTS,
+    OUT_OF_STOCK_MODES,
+    RADIUS_MAX,
+    RADIUS_MIN,
+    TAX_DISPLAYS,
+    type Density,
+    type FeedbackStyle,
+    type FontChoice,
+    type ShopStyleContract,
+} from "../design-choices";
+
 /* ================================ 常量 ================================ */
 
 /** metafield namespace（两份 metafield 共用；**不是** `$app:` 前缀，见文件头说明） */
@@ -43,17 +58,33 @@ export const DEFAULT_COLUMNS: ColumnFlags = {
     stock: true,
 };
 
-/** 含税显示（`incl` / `excl`，§五 taxDisplay） */
-export const TAX_DISPLAYS = ["incl", "excl"] as const;
-/** 缺货策略（§五 outOfStock；`hide` / `backorder` 的实现在 M7） */
-export const OUT_OF_STOCK_MODES = ["gray", "hide", "backorder"] as const;
+/**
+ * Design 相关取值（含税 / 缺货 / 密度 / 字体 / 反馈方式 / 隐藏选择器 / 圆角范围）
+ * 与 `DESIGN_CHOICES` 的真源在 `app/design-choices.ts`（客户端安全），这里 import 后再导出，
+ * 保证「服务端归一化」与「后端下拉」共用同一份白名单（M8）。
+ */
+export {
+    TAX_DISPLAYS,
+    OUT_OF_STOCK_MODES,
+    DEFAULT_NATIVE_SELECTOR,
+    NATIVE_SELECTOR_CANDIDATES,
+    DENSITIES,
+    FONTS,
+    FEEDBACK_STYLES,
+    RADIUS_MIN,
+    RADIUS_MAX,
+} from "../design-choices";
+export type {
+    Density,
+    FontChoice,
+    FeedbackStyle,
+    ShopStyleContract,
+} from "../design-choices";
+
 /** 门控模式（§五 gate；Liquid 侧按 `customer.tags` 实时比对，M10 落地） */
 export const GATE_MODES = ["off", "hide_price", "hide_table"] as const;
 /** 阶梯价模型（§2.2：A = 百分比 / B = 固定单价；M12 落地） */
 export const TIER_MODELS = ["percent", "fixed"] as const;
-
-/** B1 隐藏主题自带加购区的内置选择器（商家可在 Design 页覆写，M8） */
-export const DEFAULT_NATIVE_SELECTOR = 'form[action*="/cart/add"]';
 
 /* ============================== 契约类型 ============================== */
 
@@ -136,6 +167,10 @@ export type ShopSettingsContract = {
     tierEnabled: boolean;
     /** B1：隐藏主题自带加购区（默认关闭） */
     hideNative: { enabled: boolean; selector: string };
+    /** M8：外观样式（品牌色 / 圆角 / 密度 / 字体） */
+    style: ShopStyleContract;
+    /** M8：反馈呈现方式（inline / toast / both） */
+    feedbackStyle: FeedbackStyle;
 };
 
 /** 序列化 Shop 级契约所需的 DB 行（结构性类型，避免把 Prisma 拖进单测） */
@@ -151,6 +186,10 @@ export type ShopSettingsRowLike = {
     hideNative: boolean;
     nativeSelector: string | null;
     orderMinAmount: unknown;
+    /** M8：外观样式（JSON：brandColor / radius / density / font） */
+    theme: unknown;
+    /** M8：反馈呈现方式（inline / toast / both） */
+    feedbackStyle: string;
 };
 
 /* ============================== 纯函数 ============================== */
@@ -208,11 +247,89 @@ export function pickColumnOverrides(source: unknown): Partial<ColumnFlags> {
     return result;
 }
 
+/* ----------------------- M8：Design 值归一化 ----------------------- */
+
+/**
+ * 品牌色归一化：接受 `#rgb` / `#rrggbb`（大小写不敏感），统一输出小写 `#rrggbb`。
+ * 非法值一律返回 `null`（= 跟随主题 `currentColor`），**绝不把脏值写进店面 CSS**。
+ */
+export function normalizeBrandColor(value: unknown): string | null {
+    if (typeof value !== "string") return null;
+    const raw = value.trim();
+    const match = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(raw);
+    if (!match) return null;
+    const hex = match[1].toLowerCase();
+    const full =
+        hex.length === 3
+            ? `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
+            : hex;
+    return `#${full}`;
+}
+
+/** 圆角归一化：0–24 的整数 px；非法 / 越界返回 `null`（= 用默认） */
+export function normalizeRadius(value: unknown): number | null {
+    const num =
+        typeof value === "number"
+            ? value
+            : typeof value === "string" && value.trim() !== ""
+                ? Number(value)
+                : Number.NaN;
+    if (!Number.isFinite(num)) return null;
+    const rounded = Math.round(num);
+    if (rounded < RADIUS_MIN || rounded > RADIUS_MAX) return null;
+    return rounded;
+}
+
+/** 密度归一化（白名单，默认 `default`） */
+export function normalizeDensity(value: unknown): Density {
+    return pick(DENSITIES, value, "default");
+}
+
+/** 字体归一化（白名单，默认 `inherit` = 跟随主题） */
+export function normalizeFont(value: unknown): FontChoice {
+    return pick(FONTS, value, "inherit");
+}
+
+/** 反馈方式归一化（白名单，默认 `inline`） */
+export function normalizeFeedbackStyle(value: unknown): FeedbackStyle {
+    return pick(FEEDBACK_STYLES, value, "inline");
+}
+
+/**
+ * 隐藏开关的 CSS 选择器消毒（M8 安全底线，§2.8 / §十二 验收 15）。
+ *
+ * 选择器由商家在 Design 页自由填写，最终会被拼进店面 `<style>` ——
+ * 若含 `{ } < > ; \` 或换行，就能**逃出规则**注入任意 CSS（甚至伪内容）。
+ * 这里直接剔除这些危险字符（而不是转义），保持「只可能是选择器」的形态；
+ * 消毒后为空则退回内置默认选择器。
+ */
+export function sanitizeSelector(value: unknown): string {
+    if (typeof value !== "string") return DEFAULT_NATIVE_SELECTOR;
+    const cleaned = value
+        .replace(/[{}<>;\\]/g, "")
+        .replace(/[\r\n\t]+/g, " ")
+        .trim();
+    return cleaned || DEFAULT_NATIVE_SELECTOR;
+}
+
+/** DB 的 `theme` JSON → 外观契约（`null` / 脏结构一律回退默认，不抛错） */
+export function toShopStyleContract(theme: unknown): ShopStyleContract {
+    const source = (theme && typeof theme === "object" ? theme : {}) as Record<
+        string,
+        unknown
+    >;
+    return {
+        brandColor: normalizeBrandColor(source.brandColor),
+        radius: normalizeRadius(source.radius),
+        density: normalizeDensity(source.density),
+        font: normalizeFont(source.font),
+    };
+}
+
 /** DB 行 → Shop 级契约（**唯一生成处**；Design 页保存与 afterAuth 播种共用） */
 export function toShopSettingsContract(
     row: ShopSettingsRowLike,
 ): ShopSettingsContract {
-    const selector = (row.nativeSelector ?? "").trim();
     return {
         v: 2,
         defaultLayout: pick(LAYOUTS, row.defaultLayout, DEFAULT_LAYOUT),
@@ -229,8 +346,11 @@ export function toShopSettingsContract(
         tierEnabled: Boolean(row.tierEnabled),
         hideNative: {
             enabled: Boolean(row.hideNative),
-            selector: selector || DEFAULT_NATIVE_SELECTOR,
+            // 消毒后为空会退回内置默认；**绝不原样输出商家输入**（§2.8 安全兜底）
+            selector: sanitizeSelector(row.nativeSelector),
         },
+        style: toShopStyleContract(row.theme),
+        feedbackStyle: normalizeFeedbackStyle(row.feedbackStyle),
     };
 }
 
@@ -424,6 +544,34 @@ export async function deleteProductTableMetafield(
             data?: { metafieldsDelete?: { userErrors?: UserError[] } };
         })?.data?.metafieldsDelete?.userErrors,
         "deleteProductTableMetafield",
+    );
+}
+
+/**
+ * 删除 Shop 级 `tablely.settings`（卸载 / shop_redact 清理，§8.1 / §十二 验收 10）。
+ *
+ * 与商品级一样是 **app-owned metafield**：Shopify 卸载时**不会**自动清（M0 结论），
+ * 必须由应用主动删。幂等：不存在也不报错。
+ */
+export async function deleteShopSettingsMetafield(
+    admin: GraphqlAdmin,
+    shopId: string,
+): Promise<void> {
+    const res = await admin.graphql(DELETE_METAFIELDS_MUTATION, {
+        variables: {
+            metafields: [
+                { ownerId: shopId, namespace: NAMESPACE, key: SETTINGS_KEY },
+            ],
+        },
+    });
+
+    const json = await res.json();
+    assertNoGraphqlErrors(json, "deleteShopSettingsMetafield");
+    throwOnUserErrors(
+        (json as {
+            data?: { metafieldsDelete?: { userErrors?: UserError[] } };
+        })?.data?.metafieldsDelete?.userErrors,
+        "deleteShopSettingsMetafield",
     );
 }
 

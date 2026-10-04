@@ -1,0 +1,63 @@
+{% comment %}
+  Tablely — 样式下发（M8，Design 页「外观 / 行为」）
+
+  ⚠️ **本片段只在 `tly_show = true`（表格本次确实渲染）时被 `order-table.liquid` 引入** ——
+     这本身就是 B1 的**安全兜底**：商品未启用订购表 / 契约缺失 / 门控下看不到表时，
+     这里一行都不输出，主题自带的加购区**绝不会被隐藏**（§2.8 / §十二 验收 14）。
+
+  内容分两块：
+    ① 外观：把商家选择的品牌色 / 圆角 / 密度 / 字体写成 CSS 变量，
+       `.tablely.css` 已按变量取值，故改设置**无需改主题、无需重新部署**即生效（M8 验收）；
+    ② 隐藏主题自带加购区：`hideNative.enabled` 为真时输出一条 `选择器 { display: none; }`。
+
+  两条铁律（§2.8 / §十二 验收 15）：
+    · **不写 `!important`**、不用固定 px 度量（圆角逐点例外，由商家显式设定）；
+    · `selector` 已在服务端 `sanitizeSelector` 消毒（剔除 `{ } < > ; \` 与换行），
+      这里只做输出，不再拼任何商家自由文本。
+
+  取值判空一律用 `!= nil`：`| default:` 会把 `0`（圆角 0px）当空值，属已知坑。
+{% endcomment %}
+
+{%- assign tly_style = tly_settings.style -%}
+
+{%- assign tly_density = tly_style.density | default: 'default' -%}
+{%- assign tly_scale = 1 -%}
+{%- if tly_density == 'compact' -%}
+  {%- assign tly_scale = 0.72 -%}
+{%- elsif tly_density == 'comfortable' -%}
+  {%- assign tly_scale = 1.35 -%}
+{%- endif -%}
+
+{%- assign tly_font = tly_style.font | default: 'inherit' -%}
+{%- assign tly_family = 'inherit' -%}
+{%- if tly_font == 'system' -%}
+  {%- assign tly_family = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" -%}
+{%- elsif tly_font == 'serif' -%}
+  {%- assign tly_family = "Georgia, 'Times New Roman', serif" -%}
+{%- endif -%}
+
+<style>
+  .tablely-root {
+    --tablely-density: {{ tly_scale }};
+    font-family: {{ tly_family }};
+    {%- if tly_style.radius != nil %}
+    --tablely-radius: {{ tly_style.radius }}px;
+    {%- endif %}
+    {%- if tly_style.brandColor != nil %}
+    --tablely-brand: {{ tly_style.brandColor }};
+    {%- endif %}
+  }
+</style>
+
+{%- if tly_settings.hideNative.enabled -%}
+  {%- comment %}
+    安全兜底第 ②/③ 层：能走到这里 ⇒ 表格确实渲染了。
+    §2.8 的另外两条（商品未启用订购表 / 门控下顾客看不到表）都会让 `tly_show` 为 false，
+    自然进不到本分支。
+  {%- endcomment -%}
+  <style>
+    {{ tly_settings.hideNative.selector }} {
+      display: none;
+    }
+  </style>
+{%- endif -%}
