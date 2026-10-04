@@ -1,0 +1,16 @@
+{% comment %}
+  行内加购按钮（四种布局共用）。
+
+  参数：v_ok / v_title（`{% render %}` 隔离作用域须显式传参）。
+  不可售行输出纯文本 `—`（不用颜色作唯一标识，B14）；纯 JS 部件，就绪前由 CSS 隐藏。
+{% endcomment %}
+{%- if v_ok -%}
+  <button
+    type="button"
+    class="tablely-add"
+    data-tablely-add
+    aria-label="{{ 'table.col.action' | t }} — {{ v_title | escape }}"
+  >{{ 'table.col.action' | t }}</button>
+{%- else -%}
+  <span class="tablely-add-none" aria-hidden="true">—</span>
+{%- endif -%}

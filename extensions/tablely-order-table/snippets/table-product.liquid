@@ -1,0 +1,41 @@
+{% comment %}
+  单个变体的商品信息块（表格 / 网格 / 列表三种布局共用；矩阵格子另用紧凑写法）。
+
+  `{% render %}` 是**隔离作用域**，所有依赖必须显式传参（M4 踩坑）：
+    v / v_img / v_title / row / row_sku / row_step / v_ok
+    col_image / col_sku / col_id（列开关，已由父片段合并好）
+
+  价格 / 库存**不在这里**（A1）：它们由各布局按列开关单独输出。
+  行内反馈位 `[data-tablely-row-msg]` 属于行，故随本块一起输出（每种布局都要有）。
+{% endcomment %}
+<div class="tablely-product">
+  {%- if col_image and v_img -%}
+    <img
+      class="tablely-thumb"
+      src="{{ v_img | image_url: width: 96 }}"
+      alt="{{ v_img.alt | default: v_title | escape }}"
+      width="48"
+      height="48"
+      loading="lazy"
+    >
+  {%- endif -%}
+  <div class="tablely-product-text">
+    <span class="tablely-title">{{ v_title | escape }}</span>
+    {%- if col_sku and row_sku != blank -%}
+      <span class="tablely-sku">{{ row_sku | escape }}</span>
+    {%- endif -%}
+    {%- if col_id -%}
+      <span class="tablely-vid">{{ v.id }}</span>
+    {%- endif -%}
+    {%- if row.min > 1 -%}
+      <span class="tablely-hint">{{ 'table.moq' | t: n: row.min }}</span>
+    {%- endif -%}
+    {%- if row_step > 1 -%}
+      <span class="tablely-hint">{{ 'table.step' | t: n: row_step }}</span>
+    {%- endif -%}
+    {%- unless v_ok -%}
+      <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
+    {%- endunless -%}
+    <span class="tablely-row-msg" role="alert" data-tablely-row-msg></span>
+  </div>
+</div>

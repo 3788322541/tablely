@@ -1,0 +1,43 @@
+{% comment %}
+  数量控件（隐藏 id + 步进器；四种布局共用）。
+
+  参数：v / v_ok / v_title / idx / row / row_step（`{% render %}` 隔离作用域须显式传参）。
+
+  · 隐藏 `items[idx][id]` 只在**可售**时输出 —— 否则 Shopify 会因「quantity 缺失」
+    把它当 1 件加购（M0 实测）；`idx` 由父片段的**独立计数器**维护，跳行不留空洞。
+  · `−` / `+` 是原生 `type="button"`，键盘可达（B14）；纯 JS 部件，就绪前由 CSS 隐藏。
+{% endcomment %}
+{%- if v_ok -%}
+  <input type="hidden" name="items[{{ idx }}][id]" value="{{ v.id }}">
+{%- endif -%}
+<div class="tablely-stepper">
+  <button
+    type="button"
+    class="tablely-step"
+    data-tablely-step="-1"
+    aria-label="{{ 'table.decrease' | t }} — {{ v_title | escape }}"
+    {%- unless v_ok %} disabled{% endunless %}
+  >−</button>
+  <input
+    class="tablely-qty"
+    type="number"
+    value="0"
+    min="0"
+    {%- if row.max %} max="{{ row.max }}"{% endif %}
+    step="{{ row_step }}"
+    inputmode="numeric"
+    {%- if v_ok %}
+      name="items[{{ idx }}][quantity]"
+    {%- else %}
+      disabled
+    {%- endif %}
+    aria-label="{{ 'table.col.qty' | t }} — {{ v_title | escape }}"
+  >
+  <button
+    type="button"
+    class="tablely-step"
+    data-tablely-step="1"
+    aria-label="{{ 'table.increase' | t }} — {{ v_title | escape }}"
+    {%- unless v_ok %} disabled{% endunless %}
+  >+</button>
+</div>

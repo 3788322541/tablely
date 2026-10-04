@@ -1,15 +1,22 @@
 {% comment %}
-  Tablely 订购表 DOM（M4：表格布局 + 无 JS 表单；M5：步进器 / 行内加购 / 反馈 / 合计 / 起订金额）
+  Tablely 订购表 DOM（M4：表格布局 + 无 JS 表单；M5：步进器 / 行内加购 / 反馈 / 合计；
+  M6：四种布局 + 手机端紧凑列）
 
-  · 语义化 `<table>` + `<th scope="col">`（B14）；窄屏由 `.tablely-scroll` 横向滚动。
-  · 无 JS 兜底：**单张原生表单** `POST /cart/add`，多行
+  · **四种布局**（表格 / 网格 / 列表 / 矩阵）共用**同一份 metafield 数据**，
+    仅 DOM 结构与 CSS 呈现不同 —— **零额外数据请求**（§2.3 / P11）。
+    矩阵由服务端按商品 option 交叉生成（契约 `matrix`），**最多 2 个 option 轴，
+    超出或不足时契约里为 `null`，此处自动降级为表格**（§1.4 #3 / §十三 C9）。
+  · **可访问性（B14）**：表格与矩阵均为语义化 `<table>` + `<th scope>`；
+    矩阵的行 / 列即两个 option 轴，**任意宽度下都是「带表头的表格」，不依赖视觉坐标**
+    （窄屏靠 `.tablely-scroll` 横向滚动），故无需另做响应式降级。
+  · **无 JS 兜底**：**单张原生表单** `POST {{ routes.cart_add_url }}`，多行
     `items[<idx>][id]` + `items[<idx>][quantity]`（`enctype="multipart/form-data"`）。
   · 索引用**独立计数器 `idx`**，不用 `forloop.index0` —— 变体不存在的行会被跳过，
     `forloop.index0` 会留下索引空洞，导致 Shopify 解析多行时错位。
   · 价格 / 库存 / 可售状态**实时读 `variant`**（A1：metafield 里刻意没有这些字段）：
     `variant.price`（presentment 币种）/ `variant.inventory_quantity` /
     `variant.available`（由 Shopify 按 inventory_policy 自算）。
-    价格另以 `data-price`（**分为单位的整数**，与表格显示的 `| money` 同源）输出给 M5 的
+    价格另以 `data-price`（**分为单位的整数**，与显示的 `| money` 同源）输出给 M5 的
     合计与起订金额闸门用，**不写进 metafield**（A1）。
   · 不可售行：置灰 + 禁用（`gray` 策略）；**不渲染隐藏的 `id` 输入**——
     否则 Shopify 会因「quantity 缺失」把它当 1 件加购（M0 实测）。
@@ -18,10 +25,11 @@
     选择器做字符清洗且**不含 `!important`**（§2.8 / §十二 验收 14、15）。
   · M5 的步进器 / 行内加购按钮 / 合计 / 起订金额**全部依赖 JS**（渐进增强）：
     JS 就绪前由 CSS 隐藏（`data-tablely-ready`），无 JS 时退回「纯原生多行表单」，
-    表格里不出现点不动的死按钮（§五 无 JS 兜底）。
+    各布局里都不出现点不动的死按钮（§五 无 JS 兜底）。
 {% endcomment %}
 
 {%- assign tly_rows = tly_tbl.rows -%}
+{%- assign tly_layout = tly_layout | default: 'table' -%}
 
 {%- comment %}
   列开关：默认 → Shop 级 → Product 级（与 app/services/metafield.server.ts 的
@@ -96,28 +104,13 @@
   <div class="tablely-feedback tablely-feedback--error" role="alert" data-tablely-feedback-err hidden></div>
 
   <div class="tablely-scroll">
-    <table class="tablely-table">
-      <caption class="tablely-heading">{{ 'table.heading' | t }}</caption>
-      <thead>
-        <tr>
-          <th scope="col" class="tablely-th-product">{{ 'table.col.product' | t }}</th>
-          {%- if col_price -%}
-            <th scope="col" class="tablely-th-price">{{ 'table.col.price' | t }}</th>
-          {%- endif -%}
-          {%- if col_stock -%}
-            <th scope="col" class="tablely-th-stock">{{ 'table.col.stock' | t }}</th>
-          {%- endif -%}
-          <th scope="col" class="tablely-th-qty">{{ 'table.col.qty' | t }}</th>
-          <th scope="col" class="tablely-th-action">{{ 'table.col.action' | t }}</th>
-        </tr>
-      </thead>
-      <tbody>
+    {%- if tly_layout == 'grid' or tly_layout == 'list' -%}
+      {%- comment %}
+        网格 / 列表：同一套卡片 DOM，仅容器与条目修饰类不同（CSS Grid / Flex 决定呈现）。
+      {%- endcomment -%}
+      <ul class="tablely-items tablely-items--{{ tly_layout }}">
         {%- assign idx = 0 -%}
         {%- for row in tly_rows -%}
-          {%- comment %}
-            用 `| plus: 0` 把契约里的十进制字符串 vid 转成数字再比对：
-            Liquid 的 `where` 不做类型强制，字符串与数字直接比较恒不相等。
-          {%- endcomment -%}
           {%- assign row_vid = row.vid | plus: 0 -%}
           {%- assign v = product.variants | where: 'id', row_vid | first -%}
           {%- if v -%}
@@ -127,8 +120,8 @@
             {%- assign v_title = row.title | default: v.title -%}
             {%- assign row_sku = row.sku | default: v.sku -%}
             {%- assign row_step = row.step | default: 1 -%}
-            <tr
-              class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
+            <li
+              class="tablely-row tablely-item tablely-item--{{ tly_layout }}{% unless v_ok %} tablely-row--soldout{% endunless %}"
               data-tablely-row
               data-vid="{{ v.id }}"
               data-price="{{ v.price }}"
@@ -138,109 +131,177 @@
               {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
               {%- unless v_ok %} data-soldout="true"{% endunless %}
             >
-              <td class="tablely-cell-product">
-                <div class="tablely-product">
-                  {%- if col_image and v_img -%}
-                    <img
-                      class="tablely-thumb"
-                      src="{{ v_img | image_url: width: 96 }}"
-                      alt="{{ v_img.alt | default: v_title | escape }}"
-                      width="48"
-                      height="48"
-                      loading="lazy"
-                    >
-                  {%- endif -%}
-                  <div class="tablely-product-text">
-                    <span class="tablely-title">{{ v_title | escape }}</span>
-                    {%- if col_sku and row_sku != blank -%}
-                      <span class="tablely-sku">{{ row_sku | escape }}</span>
-                    {%- endif -%}
-                    {%- if col_id -%}
-                      <span class="tablely-vid">{{ v.id }}</span>
-                    {%- endif -%}
-                    {%- if row.min > 1 -%}
-                      <span class="tablely-hint">{{ 'table.moq' | t: n: row.min }}</span>
-                    {%- endif -%}
-                    {%- if row_step > 1 -%}
-                      <span class="tablely-hint">{{ 'table.step' | t: n: row_step }}</span>
-                    {%- endif -%}
-                    {%- unless v_ok -%}
-                      <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
-                    {%- endunless -%}
-                    {%- comment %}
-                      行内反馈位（M5）：失败时由 JS 写入具体原因（库存 / 起订量 / 步长 / 上限），
-                      初始为空且不占位；`role="alert"` 保证键盘与读屏用户也能拿到原因（B14）。
-                    {%- endcomment -%}
-                    <span class="tablely-row-msg" role="alert" data-tablely-row-msg></span>
-                  </div>
-                </div>
-              </td>
-              {%- if col_price -%}
-                <td class="tablely-cell-price">{{ v.price | money }}</td>
-              {%- endif -%}
-              {%- if col_stock -%}
-                <td class="tablely-cell-stock">
-                  {%- if v.inventory_management != blank -%}
-                    {{- v.inventory_quantity -}}
-                  {%- else -%}
-                    —
-                  {%- endif -%}
-                </td>
-              {%- endif -%}
-              <td class="tablely-cell-qty">
-                {%- if v_ok -%}
-                  <input type="hidden" name="items[{{ idx }}][id]" value="{{ v.id }}">
+              {% render 'table-product', v: v, v_img: v_img, v_title: v_title, row: row, row_sku: row_sku, row_step: row_step, v_ok: v_ok, col_image: col_image, col_sku: col_sku, col_id: col_id %}
+              <div class="tablely-meta">
+                {%- if col_price -%}
+                  <span class="tablely-meta-item">
+                    <span class="tablely-meta-label">{{ 'table.col.price' | t }}</span>
+                    <span class="tablely-cell-price">{{ v.price | money }}</span>
+                  </span>
                 {%- endif -%}
-                <div class="tablely-stepper">
-                  <button
-                    type="button"
-                    class="tablely-step"
-                    data-tablely-step="-1"
-                    aria-label="{{ 'table.decrease' | t }} — {{ v_title | escape }}"
-                    {%- unless v_ok %} disabled{% endunless %}
-                  >−</button>
-                  <input
-                    class="tablely-qty"
-                    type="number"
-                    value="0"
-                    min="0"
-                    {%- if row.max %} max="{{ row.max }}"{% endif %}
-                    step="{{ row_step }}"
-                    inputmode="numeric"
-                    {%- if v_ok %}
-                      name="items[{{ idx }}][quantity]"
-                    {%- else %}
-                      disabled
-                    {%- endif %}
-                    aria-label="{{ 'table.col.qty' | t }} — {{ v_title | escape }}"
-                  >
-                  <button
-                    type="button"
-                    class="tablely-step"
-                    data-tablely-step="1"
-                    aria-label="{{ 'table.increase' | t }} — {{ v_title | escape }}"
-                    {%- unless v_ok %} disabled{% endunless %}
-                  >+</button>
-                </div>
-              </td>
-              <td class="tablely-cell-action">
-                {%- if v_ok -%}
-                  <button
-                    type="button"
-                    class="tablely-add"
-                    data-tablely-add
-                    aria-label="{{ 'table.col.action' | t }} — {{ v_title | escape }}"
-                  >{{ 'table.col.action' | t }}</button>
-                {%- else -%}
-                  <span class="tablely-add-none" aria-hidden="true">—</span>
+                {%- if col_stock -%}
+                  <span class="tablely-meta-item">
+                    <span class="tablely-meta-label">{{ 'table.col.stock' | t }}</span>
+                    <span class="tablely-cell-stock">
+                      {%- if v.inventory_management != blank -%}
+                        {{- v.inventory_quantity -}}
+                      {%- else -%}
+                        —
+                      {%- endif -%}
+                    </span>
+                  </span>
                 {%- endif -%}
-              </td>
-            </tr>
+              </div>
+              <div class="tablely-item-actions">
+                {% render 'table-qty', v: v, v_ok: v_ok, v_title: v_title, idx: idx, row: row, row_step: row_step %}
+                <span class="tablely-action">{% render 'table-add', v_ok: v_ok, v_title: v_title %}</span>
+              </div>
+            </li>
             {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
           {%- endif -%}
         {%- endfor -%}
-      </tbody>
-    </table>
+      </ul>
+    {%- elsif tly_layout == 'matrix' and tly_tbl.matrix -%}
+      {%- comment %}
+        矩阵：行 = 第 1 个 option 的取值，列 = 第 2 个 option 的取值，格子 = 变体。
+        语义化 `<table>` + `<th scope="row"/"col">`，**表头任何时候都在**（B14）。
+        格子用 `cells`（x/y 坐标）反查变体；缺格输出 `—`，不伪造。
+      {%- endcomment -%}
+      {%- assign tly_mx = tly_tbl.matrix -%}
+      <table class="tablely-table tablely-matrix" aria-label="{{ 'table.heading' | t }} — {{ tly_mx.yAxis.name | escape }} × {{ tly_mx.xAxis.name | escape }}">
+        <caption class="tablely-heading">{{ 'table.heading' | t }}</caption>
+        <thead>
+          <tr>
+            <td class="tablely-matrix-corner"></td>
+            {%- for xv in tly_mx.xAxis.values -%}
+              <th scope="col" class="tablely-matrix-th">{{ xv | escape }}</th>
+            {%- endfor -%}
+          </tr>
+        </thead>
+        <tbody>
+          {%- assign idx = 0 -%}
+          {%- for yv in tly_mx.yAxis.values -%}
+            {%- assign y_i = forloop.index0 -%}
+            <tr>
+              <th scope="row" class="tablely-matrix-th">{{ yv | escape }}</th>
+              {%- for xv in tly_mx.xAxis.values -%}
+                {%- assign x_i = forloop.index0 -%}
+                {%- assign cell = tly_mx.cells | where: 'x', x_i | where: 'y', y_i | first -%}
+                {%- assign v = nil -%}
+                {%- if cell -%}
+                  {%- assign cell_vid = cell.vid | plus: 0 -%}
+                  {%- assign v = product.variants | where: 'id', cell_vid | first -%}
+                  {%- assign mrow = tly_rows | where: 'vid', cell.vid | first -%}
+                {%- endif -%}
+                <td class="tablely-matrix-cell">
+                  {%- if v -%}
+                    {%- assign v_ok = false -%}
+                    {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+                    {%- assign v_title = mrow.title | default: v.title -%}
+                    {%- assign row_step = mrow.step | default: 1 -%}
+                    <div
+                      class="tablely-row tablely-matrix-item{% unless v_ok %} tablely-row--soldout{% endunless %}"
+                      data-tablely-row
+                      data-vid="{{ v.id }}"
+                      data-price="{{ v.price }}"
+                      data-min="{{ mrow.min | default: 1 }}"
+                      {%- if mrow.max %} data-max="{{ mrow.max }}"{% endif %}
+                      data-step="{{ row_step }}"
+                      {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+                      {%- unless v_ok %} data-soldout="true"{% endunless %}
+                    >
+                      {%- if col_price -%}
+                        <span class="tablely-matrix-price">{{ v.price | money }}</span>
+                      {%- endif -%}
+                      {%- unless v_ok -%}
+                        <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
+                      {%- endunless -%}
+                      {% render 'table-qty', v: v, v_ok: v_ok, v_title: v_title, idx: idx, row: mrow, row_step: row_step %}
+                      <span class="tablely-action">{% render 'table-add', v_ok: v_ok, v_title: v_title %}</span>
+                      <span class="tablely-row-msg" role="alert" data-tablely-row-msg></span>
+                    </div>
+                  {%- else -%}
+                    <span class="tablely-matrix-empty" aria-hidden="true">—</span>
+                  {%- endif -%}
+                </td>
+                {%- if v and v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
+              {%- endfor -%}
+            </tr>
+          {%- endfor -%}
+        </tbody>
+      </table>
+    {%- else -%}
+      {%- comment %} 表格（默认；也是矩阵在 option 轴不足 / 超出时的降级目标） {%- endcomment -%}
+      <table class="tablely-table">
+        <caption class="tablely-heading">{{ 'table.heading' | t }}</caption>
+        <thead>
+          <tr>
+            <th scope="col" class="tablely-th-product">{{ 'table.col.product' | t }}</th>
+            {%- if col_price -%}
+              <th scope="col" class="tablely-th-price">{{ 'table.col.price' | t }}</th>
+            {%- endif -%}
+            {%- if col_stock -%}
+              <th scope="col" class="tablely-th-stock">{{ 'table.col.stock' | t }}</th>
+            {%- endif -%}
+            <th scope="col" class="tablely-th-qty">{{ 'table.col.qty' | t }}</th>
+            <th scope="col" class="tablely-th-action">{{ 'table.col.action' | t }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {%- assign idx = 0 -%}
+          {%- for row in tly_rows -%}
+            {%- comment %}
+              用 `| plus: 0` 把契约里的十进制字符串 vid 转成数字再比对：
+              Liquid 的 `where` 不做类型强制，字符串与数字直接比较恒不相等。
+            {%- endcomment -%}
+            {%- assign row_vid = row.vid | plus: 0 -%}
+            {%- assign v = product.variants | where: 'id', row_vid | first -%}
+            {%- if v -%}
+              {%- assign v_ok = false -%}
+              {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+              {%- assign v_img = v.image | default: product.featured_image -%}
+              {%- assign v_title = row.title | default: v.title -%}
+              {%- assign row_sku = row.sku | default: v.sku -%}
+              {%- assign row_step = row.step | default: 1 -%}
+              <tr
+                class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
+                data-tablely-row
+                data-vid="{{ v.id }}"
+                data-price="{{ v.price }}"
+                data-min="{{ row.min | default: 1 }}"
+                {%- if row.max %} data-max="{{ row.max }}"{% endif %}
+                data-step="{{ row_step }}"
+                {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+                {%- unless v_ok %} data-soldout="true"{% endunless %}
+              >
+                <td class="tablely-cell-product">
+                  {% render 'table-product', v: v, v_img: v_img, v_title: v_title, row: row, row_sku: row_sku, row_step: row_step, v_ok: v_ok, col_image: col_image, col_sku: col_sku, col_id: col_id %}
+                </td>
+                {%- if col_price -%}
+                  <td class="tablely-cell-price">{{ v.price | money }}</td>
+                {%- endif -%}
+                {%- if col_stock -%}
+                  <td class="tablely-cell-stock">
+                    {%- if v.inventory_management != blank -%}
+                      {{- v.inventory_quantity -}}
+                    {%- else -%}
+                      —
+                    {%- endif -%}
+                  </td>
+                {%- endif -%}
+                <td class="tablely-cell-qty">
+                  {% render 'table-qty', v: v, v_ok: v_ok, v_title: v_title, idx: idx, row: row, row_step: row_step %}
+                </td>
+                <td class="tablely-cell-action">
+                  {% render 'table-add', v_ok: v_ok, v_title: v_title %}
+                </td>
+              </tr>
+              {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
+            {%- endif -%}
+          {%- endfor -%}
+        </tbody>
+      </table>
+    {%- endif -%}
   </div>
 
   <div class="tablely-footer">

@@ -76,12 +76,31 @@ export type TableContractRow = {
     wholesale: WholesaleEntry[];
 };
 
-/** 矩阵布局的坐标（§五 `matrix`；M6 落值，缺失的格子由「`cells` 里没有对应项」表达） */
+/** 矩阵的一个轴（§五 `matrix`）：option 名 + 取值（取值即表头顺序） */
+export type MatrixAxis = {
+    name: string;
+    values: string[];
+};
+
+/**
+ * 矩阵布局坐标（§五 `matrix`；M6 落值）。
+ *
+ * 矩阵 = **按 option 交叉**：行 = 商品第 1 个 option 的取值，列 = 第 2 个 option 的取值；
+ * `cells` 把每个格子指向一个变体，**没有对应项的格子即空**（不补 `null`）。
+ * 全是配置类数据（option 名 / 取值 / 变体 id），**不含价格与库存**（A1）。
+ */
 export type MatrixContract = {
-    xAxis: string;
-    yAxis: string;
+    /** 列轴（商品第 2 个 option） */
+    xAxis: MatrixAxis;
+    /** 行轴（商品第 1 个 option） */
+    yAxis: MatrixAxis;
     cells: { x: number; y: number; vid: string }[];
 };
+
+/** 商品 option（Admin API → 矩阵轴；`values` 保持 Shopify 的顺序） */
+export type ProductOptionLike = { name: string; values: string[] };
+/** 变体所选 option（Admin API `selectedOptions`） */
+export type VariantOptionLike = { vid: string; options: { name: string; value: string }[] };
 
 /** Product 级 `table` metafield 契约 v2（§五 ②） */
 export type ProductTableContract = {
@@ -223,6 +242,47 @@ export function buildShopSettingsValue(contract: ShopSettingsContract): string {
 /** 构建 Product 级 `table` metafield 的 JSON 值（**唯一生成处**） */
 export function buildProductTableValue(contract: ProductTableContract): string {
     return JSON.stringify(contract);
+}
+
+/**
+ * 由商品 option 与变体生成矩阵坐标（§2.3 / §五；M6 落地）。
+ *
+ * 硬约束（§1.4 #3 / §十三 C9）：**恰好 2 个 option 轴**才能成矩阵 ——
+ *   · 0 / 1 个 option 构不成「交叉」，≥3 个会指数爆炸，**一律返回 `null`**；
+ *   · 返回 `null` 时 Liquid 侧自动降级为表格布局（不报错、不留空白）。
+ * 行轴 = 第 1 个 option，列轴 = 第 2 个 option（与「规格 × 包装重量」的直观一致）。
+ * 变体若缺某个轴上的取值（理论上不会），跳过该格子而不是伪造坐标。
+ */
+export function buildMatrix(
+    options: ProductOptionLike[],
+    variants: VariantOptionLike[],
+): MatrixContract | null {
+    const rowOption = options[0];
+    const colOption = options[1];
+    if (options.length !== 2 || !rowOption || !colOption) return null;
+    if (!rowOption.name || !colOption.name) return null;
+
+    const rowValues = [...rowOption.values];
+    const colValues = [...colOption.values];
+    if (!rowValues.length || !colValues.length) return null;
+
+    const cells: MatrixContract["cells"] = [];
+    for (const variant of variants) {
+        const yValue = variant.options.find((item) => item.name === rowOption.name)?.value;
+        const xValue = variant.options.find((item) => item.name === colOption.name)?.value;
+        if (yValue === undefined || xValue === undefined) continue;
+        const y = rowValues.indexOf(yValue);
+        const x = colValues.indexOf(xValue);
+        if (x < 0 || y < 0) continue;
+        cells.push({ x, y, vid: variant.vid });
+    }
+    if (!cells.length) return null;
+
+    return {
+        xAxis: { name: colOption.name, values: colValues },
+        yAxis: { name: rowOption.name, values: rowValues },
+        cells,
+    };
 }
 
 /* ============================== 写 metafield ============================== */
