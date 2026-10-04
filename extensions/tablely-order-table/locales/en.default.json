@@ -10,6 +10,8 @@
             "action": "Add"
         },
         "addAll": "Add all to cart",
+        "vatExcl": "Price w/o VAT",
+        "vatIncl": "Price incl. VAT",
         "moq": "Min. {{ n }}",
         "step": "Step {{ n }}",
         "summary": "Selected {{ rows }} rows · {{ units }} units · Est. {{ total }}",

@@ -1,6 +1,6 @@
 {% comment %}
   Tablely 订购表 DOM（M4：表格布局 + 无 JS 表单；M5：步进器 / 行内加购 / 反馈 / 合计；
-  M6：四种布局 + 手机端紧凑列）
+  M6：四种布局 + 手机端紧凑列；M7：含税/不含税标签 + 折扣标 + 缺货三策略）
 
   · **四种布局**（表格 / 网格 / 列表 / 矩阵）共用**同一份 metafield 数据**，
     仅 DOM 结构与 CSS 呈现不同 —— **零额外数据请求**（§2.3 / P11）。
@@ -67,6 +67,27 @@
 {%- endif -%}
 
 {%- comment %}
+  含税 / 不含税标签（M7 / §1.4 #14；验收 #5「与店铺税设置一致」）：
+  **以 `cart.taxes_included` 为真源** —— 它是 Shopify 官方指定属性（按顾客所在市场实时判定
+  价格是否含税），故标签永远与店铺 / 市场设置一致；缺失时才退回店铺级 `taxDisplay`
+  （`incl` = 含税）。价格数字仍取 `variant.price`（与主题同源，不自行换算 —— 税费率对
+  Liquid 不可见，§16.2「展示价 ≠ 结算价」）。
+{%- endcomment -%}
+{%- assign tly_tax_incl = cart.taxes_included -%}
+{%- if tly_tax_incl == nil -%}
+  {%- assign tly_tax_incl = false -%}
+  {%- if tly_settings.taxDisplay == 'incl' -%}{%- assign tly_tax_incl = true -%}{%- endif -%}
+{%- endif -%}
+{%- assign tly_price_label = 'table.vatExcl' -%}
+{%- if tly_tax_incl == true -%}{%- assign tly_price_label = 'table.vatIncl' -%}{%- endif -%}
+
+{%- comment %}
+  缺货三策略（M7 / §1.4 #13）：`gray`（默认，置灰 + 原因）/ `hide`（整行不渲染）/
+  `backorder`（允许缺货下单）。Free 仅 `gray`，Pro 项门控统一推迟到 M9（不在此处判套餐）。
+{%- endcomment -%}
+{%- assign tly_oos = tly_settings.outOfStock | default: 'gray' -%}
+
+{%- comment %}
   B1 隐藏主题自带加购区：三重守卫（本片段只在「已确认渲染」时被引入，故前两条即足够）
   之外，选择器再清洗掉 `<` `>` `{` `}` `;`（避免商家误填把 `<style>` 撑破），
   空选择器直接不输出。**不加 `!important`**（§十二 验收 15）。
@@ -116,10 +137,15 @@
           {%- if v -%}
             {%- assign v_ok = false -%}
             {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+            {%- assign v_force = false -%}
+            {%- if tly_oos == 'backorder' and v_ok == false and v.inventory_management != blank and v.inventory_quantity <= 0 -%}
+              {%- assign v_ok = true -%}{%- assign v_force = true -%}
+            {%- endif -%}
             {%- assign v_img = v.image | default: product.featured_image -%}
             {%- assign v_title = row.title | default: v.title -%}
             {%- assign row_sku = row.sku | default: v.sku -%}
             {%- assign row_step = row.step | default: 1 -%}
+            {%- unless tly_oos == 'hide' and v_ok == false -%}
             <li
               class="tablely-row tablely-item tablely-item--{{ tly_layout }}{% unless v_ok %} tablely-row--soldout{% endunless %}"
               data-tablely-row
@@ -128,15 +154,15 @@
               data-min="{{ row.min | default: 1 }}"
               {%- if row.max %} data-max="{{ row.max }}"{% endif %}
               data-step="{{ row_step }}"
-              {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+              {%- if v.inventory_management != blank and v_force == false %} data-stock="{{ v.inventory_quantity }}"{% endif %}
               {%- unless v_ok %} data-soldout="true"{% endunless %}
             >
               {% render 'table-product', v: v, v_img: v_img, v_title: v_title, row: row, row_sku: row_sku, row_step: row_step, v_ok: v_ok, col_image: col_image, col_sku: col_sku, col_id: col_id %}
               <div class="tablely-meta">
                 {%- if col_price -%}
                   <span class="tablely-meta-item">
-                    <span class="tablely-meta-label">{{ 'table.col.price' | t }}</span>
-                    <span class="tablely-cell-price">{{ v.price | money }}</span>
+                    <span class="tablely-meta-label">{{ tly_price_label | t }}</span>
+                    <span class="tablely-cell-price">{% render 'table-price', v: v %}</span>
                   </span>
                 {%- endif -%}
                 {%- if col_stock -%}
@@ -157,6 +183,7 @@
                 <span class="tablely-action">{% render 'table-add', v_ok: v_ok, v_title: v_title %}</span>
               </div>
             </li>
+            {%- endunless -%}
             {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
           {%- endif -%}
         {%- endfor -%}
@@ -194,11 +221,19 @@
                   {%- assign mrow = tly_rows | where: 'vid', cell.vid | first -%}
                 {%- endif -%}
                 <td class="tablely-matrix-cell">
+                  {%- assign v_ok = false -%}
+                  {%- assign v_force = false -%}
                   {%- if v -%}
-                    {%- assign v_ok = false -%}
                     {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+                    {%- if tly_oos == 'backorder' and v_ok == false and v.inventory_management != blank and v.inventory_quantity <= 0 -%}
+                      {%- assign v_ok = true -%}{%- assign v_force = true -%}
+                    {%- endif -%}
                     {%- assign v_title = mrow.title | default: v.title -%}
                     {%- assign row_step = mrow.step | default: 1 -%}
+                  {%- endif -%}
+                  {%- if v and v_ok == false and tly_oos == 'hide' -%}
+                    <span class="tablely-matrix-empty" aria-hidden="true">—</span>
+                  {%- elsif v -%}
                     <div
                       class="tablely-row tablely-matrix-item{% unless v_ok %} tablely-row--soldout{% endunless %}"
                       data-tablely-row
@@ -207,11 +242,11 @@
                       data-min="{{ mrow.min | default: 1 }}"
                       {%- if mrow.max %} data-max="{{ mrow.max }}"{% endif %}
                       data-step="{{ row_step }}"
-                      {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+                      {%- if v.inventory_management != blank and v_force == false %} data-stock="{{ v.inventory_quantity }}"{% endif %}
                       {%- unless v_ok %} data-soldout="true"{% endunless %}
                     >
                       {%- if col_price -%}
-                        <span class="tablely-matrix-price">{{ v.price | money }}</span>
+                        <span class="tablely-matrix-price">{% render 'table-price', v: v %}</span>
                       {%- endif -%}
                       {%- unless v_ok -%}
                         <span class="tablely-soldout">{{ 'feedback.soldOut' | t }}</span>
@@ -238,7 +273,7 @@
           <tr>
             <th scope="col" class="tablely-th-product">{{ 'table.col.product' | t }}</th>
             {%- if col_price -%}
-              <th scope="col" class="tablely-th-price">{{ 'table.col.price' | t }}</th>
+              <th scope="col" class="tablely-th-price">{{ tly_price_label | t }}</th>
             {%- endif -%}
             {%- if col_stock -%}
               <th scope="col" class="tablely-th-stock">{{ 'table.col.stock' | t }}</th>
@@ -259,10 +294,15 @@
             {%- if v -%}
               {%- assign v_ok = false -%}
               {%- if v.available -%}{%- assign v_ok = true -%}{%- endif -%}
+              {%- assign v_force = false -%}
+              {%- if tly_oos == 'backorder' and v_ok == false and v.inventory_management != blank and v.inventory_quantity <= 0 -%}
+                {%- assign v_ok = true -%}{%- assign v_force = true -%}
+              {%- endif -%}
               {%- assign v_img = v.image | default: product.featured_image -%}
               {%- assign v_title = row.title | default: v.title -%}
               {%- assign row_sku = row.sku | default: v.sku -%}
               {%- assign row_step = row.step | default: 1 -%}
+              {%- unless tly_oos == 'hide' and v_ok == false -%}
               <tr
                 class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
                 data-tablely-row
@@ -271,14 +311,14 @@
                 data-min="{{ row.min | default: 1 }}"
                 {%- if row.max %} data-max="{{ row.max }}"{% endif %}
                 data-step="{{ row_step }}"
-                {%- if v.inventory_management != blank %} data-stock="{{ v.inventory_quantity }}"{% endif %}
+                {%- if v.inventory_management != blank and v_force == false %} data-stock="{{ v.inventory_quantity }}"{% endif %}
                 {%- unless v_ok %} data-soldout="true"{% endunless %}
               >
                 <td class="tablely-cell-product">
                   {% render 'table-product', v: v, v_img: v_img, v_title: v_title, row: row, row_sku: row_sku, row_step: row_step, v_ok: v_ok, col_image: col_image, col_sku: col_sku, col_id: col_id %}
                 </td>
                 {%- if col_price -%}
-                  <td class="tablely-cell-price">{{ v.price | money }}</td>
+                  <td class="tablely-cell-price">{% render 'table-price', v: v %}</td>
                 {%- endif -%}
                 {%- if col_stock -%}
                   <td class="tablely-cell-stock">
@@ -296,6 +336,7 @@
                   {% render 'table-add', v_ok: v_ok, v_title: v_title %}
                 </td>
               </tr>
+              {%- endunless -%}
               {%- if v_ok -%}{%- assign idx = idx | plus: 1 -%}{%- endif -%}
             {%- endif -%}
           {%- endfor -%}

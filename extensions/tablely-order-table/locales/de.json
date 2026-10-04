@@ -10,6 +10,8 @@
             "action": "Hinzufügen"
         },
         "addAll": "Alle in den Warenkorb",
+        "vatExcl": "Preis ohne MwSt.",
+        "vatIncl": "Preis inkl. MwSt.",
         "moq": "Mind. {{ n }}",
         "step": "Schritt {{ n }}",
         "summary": "Ausgewählt: {{ rows }} Zeilen · {{ units }} Stück · ca. {{ total }}",
