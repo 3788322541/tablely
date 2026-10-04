@@ -16,17 +16,30 @@
 import type { Prisma } from "@prisma/client";
 
 import prisma from "../db.server";
+import { hasFeature } from "../plan";
 import { checkBulkCount } from "../perf-limits";
 import type { GraphqlAdmin } from "./metafield.server";
 import {
     TablelyError,
     listProductVariants,
     pushProductTableMetafield,
+    resolvePlan,
     validateVariantRule,
     type VariantRuleValues,
 } from "./tables.server";
 
 export { isTablelyError } from "./tables.server";
+
+/**
+ * 布局模板属 Pro（§1.4 #28）：所有**写入**入口统一在此拦截（§19.3 后端拒写）。
+ * 已保存的模板不删除、不隐藏（降级只锁编辑），只拒绝再次创建 / 套用。
+ */
+async function requireTemplatePlan(shop: string): Promise<void> {
+    const plan = await resolvePlan(shop);
+    if (!hasFeature(plan, "layout_templates")) {
+        throw new TablelyError("error.proRequired");
+    }
+}
 
 /* --------------------------- 模板快照契约 --------------------------- */
 
@@ -137,6 +150,7 @@ export async function saveTemplateFromProduct(input: {
     productId: string;
     name: string;
 }): Promise<{ id: string; name: string }> {
+    await requireTemplatePlan(input.shop);
     const name = normalizeTemplateName(input.name);
 
     const [table, rules] = await Promise.all([
@@ -186,6 +200,7 @@ export async function setDefaultTemplate(input: {
     templateId: string;
     isDefault: boolean;
 }): Promise<void> {
+    await requireTemplatePlan(input.shop);
     const row = await prisma.layoutTemplate.findUnique({
         where: { id: input.templateId },
         select: { id: true, shop: true },
@@ -208,6 +223,7 @@ export async function deleteTemplate(input: {
     shop: string;
     templateId: string;
 }): Promise<void> {
+    await requireTemplatePlan(input.shop);
     const row = await prisma.layoutTemplate.findUnique({
         where: { id: input.templateId },
         select: { id: true, shop: true },
@@ -257,6 +273,7 @@ export type ApplyTemplateResult = {
 export async function applyTemplate(
     input: ApplyTemplateInput,
 ): Promise<ApplyTemplateResult> {
+    await requireTemplatePlan(input.shop);
     const template = await prisma.layoutTemplate.findUnique({
         where: { id: input.templateId },
         select: { shop: true, payload: true },

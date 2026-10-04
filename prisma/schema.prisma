@@ -254,16 +254,21 @@ model AddToCartEvent {
 
 /* ================================================================== *
  * ⑫ 套餐状态（M9 Billing 回写）
- * 沿用 Attributly 的字段口径：plan / trialEndsAt / syncedAt。
+ * 沿用 Attributly 的字段口径：plan / trialEndsAt / syncedAt；
+ * M9 另加两个「试用挽回」用列（§19.4）：
+ *   - everPro：曾成为过 Pro（用于区分「降级」与「从未升级」，只在 True 时写入，不回退）
+ *   - winbackSeenAt：降级说明卡（winback.summary）已被关闭的时间，「首次打开后台」只提示一次
  * ================================================================== */
 model PlanState {
-  id          String    @id @default(cuid())
-  shop        String    @unique
-  plan        String    @default("free") // free | pro
-  trialEndsAt DateTime? @db.Timestamptz(3)
-  syncedAt    DateTime? @db.Timestamptz(3)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  id             String    @id @default(cuid())
+  shop           String    @unique
+  plan           String    @default("free") // free | pro
+  trialEndsAt    DateTime? @db.Timestamptz(3)
+  everPro        Boolean   @default(false) // 曾为 Pro（降级判定用，只置 true 不回退）
+  winbackSeenAt  DateTime? @db.Timestamptz(3) // 降级说明卡已关闭的时间（§19.4 触点②）
+  syncedAt       DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
 }
 
 /* ================================================================== *

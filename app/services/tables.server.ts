@@ -16,6 +16,7 @@
 import type { Prisma } from "@prisma/client";
 
 import prisma from "../db.server";
+import { hasFeature, isProLayout, type Plan } from "../plan";
 import { MAX_TABLE_ROWS } from "../perf-limits";
 import {
     buildMatrix,
@@ -60,12 +61,43 @@ export function maxTablesForPlan(plan: string): number {
 }
 
 /** 读取当前店铺档位（PlanState 由 M9 Billing 回写；无记录即 Free） */
-export async function resolvePlan(shop: string): Promise<string> {
+export async function resolvePlan(shop: string): Promise<Plan> {
     const row = await prisma.planState.findUnique({
         where: { shop },
         select: { plan: true },
     });
     return row?.plan === "pro" ? "pro" : "free";
+}
+
+/* --------------------------- 降级只读（§1.6 / §19） --------------------------- */
+
+/**
+ * 降级后**超限商品一律只读**（§1.6：哪 3 个算额度内不做强制指定，超出部分只读）。
+ *
+ * 判定口径：按列表同一顺序（`sortOrder asc, updatedAt desc`）取**已启用**行的前 `limit` 个
+ * 视为额度内，其余为只读。Free 店未超额时返回空集合（正常状态不该报降级）。
+ */
+export async function listReadOnlyProductIds(shop: string): Promise<Set<string>> {
+    const plan = await resolvePlan(shop);
+    const limit = maxTablesForPlan(plan);
+    if (limit === Number.POSITIVE_INFINITY) return new Set();
+
+    const rows = await prisma.productTable.findMany({
+        where: { shop, enabled: true },
+        orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+        select: { productId: true },
+    });
+    if (rows.length <= limit) return new Set();
+    return new Set(rows.slice(limit).map((row) => row.productId));
+}
+
+/** 单个商品是否处于「降级超限只读」状态 */
+export async function isProductReadOnly(
+    shop: string,
+    productId: string,
+): Promise<boolean> {
+    const readOnly = await listReadOnlyProductIds(shop);
+    return readOnly.has(productId);
 }
 
 /* --------------------------- 值与规则校验 --------------------------- */
@@ -219,11 +251,15 @@ export async function getShopOrderMinAmount(
     return row?.orderMinAmount ? row.orderMinAmount.toFixed(2) : null;
 }
 
-/** 保存店铺级默认起订金额（留空 → 落 `null`，不写 0） */
+/** 保存店铺级默认起订金额（留空 → 落 `null`，不写 0）；Pro 专属（§1.6 #36） */
 export async function saveShopOrderMinAmount(
     shop: string,
     raw: string | null | undefined,
 ): Promise<string | null> {
+    const plan = await resolvePlan(shop);
+    if (!hasFeature(plan, "order_minimum")) {
+        throw new TablelyError("error.proRequired");
+    }
     const value = normalizeOrderMinAmount(raw);
     await prisma.shopSettings.upsert({
         where: { shop },
@@ -392,13 +428,26 @@ export async function saveProductTable(
 ): Promise<void> {
     const orderMinAmount = normalizeOrderMinAmount(input.orderMinAmount);
 
+    // 档位只解析一次，供「Pro 字段门控」与「额度」共用（§19.3 后端拒写）
+    const plan = await resolvePlan(input.shop);
+    if (input.layout && isProLayout(input.layout) && !hasFeature(plan, "layout_non_table")) {
+        throw new TablelyError("error.proRequired");
+    }
+    if (orderMinAmount !== null && !hasFeature(plan, "order_minimum")) {
+        throw new TablelyError("error.proRequired");
+    }
+
+    const existing = await prisma.productTable.findUnique({
+        where: { shop_productId: { shop: input.shop, productId: input.productId } },
+        select: { enabled: true },
+    });
+
     if (input.enabled) {
-        const existing = await prisma.productTable.findUnique({
-            where: { shop_productId: { shop: input.shop, productId: input.productId } },
-            select: { enabled: true },
-        });
+        // 降级后超限商品只读（§1.6 / §19 验收 19）：已启用且超限的商品不再接受编辑
+        if (existing?.enabled && (await isProductReadOnly(input.shop, input.productId))) {
+            throw new TablelyError("error.overLimitReadOnly");
+        }
         if (!existing?.enabled) {
-            const plan = await resolvePlan(input.shop);
             const limit = maxTablesForPlan(plan);
             if (limit !== Number.POSITIVE_INFINITY) {
                 const used = await countEnabledTables(input.shop);

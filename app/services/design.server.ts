@@ -16,6 +16,7 @@
  */
 
 import prisma from "../db.server";
+import { hasFeature } from "../plan";
 import {
     OUT_OF_STOCK_MODES,
     TAX_DISPLAYS,
@@ -30,11 +31,23 @@ import {
     type GraphqlAdmin,
     type ShopStyleContract,
 } from "./metafield.server";
-import { getProductRefsByIds } from "./tables.server";
+import { getProductRefsByIds, resolvePlan, TablelyError } from "./tables.server";
 import {
     ensureShopSettings,
     pushShopSettingsMetafield,
 } from "./settings.server";
+
+export { isTablelyError } from "./tables.server";
+
+/** 两个外观契约是否不同（Free 只能保存「未被改动」的现值，§1.6 降级只锁编辑） */
+function styleChanged(a: ShopStyleContract, b: ShopStyleContract): boolean {
+    return (
+        a.brandColor !== b.brandColor ||
+        a.radius !== b.radius ||
+        a.density !== b.density ||
+        a.font !== b.font
+    );
+}
 
 export type TaxDisplayChoice = (typeof TAX_DISPLAYS)[number];
 export type OutOfStockChoice = (typeof OUT_OF_STOCK_MODES)[number];
@@ -113,6 +126,17 @@ export async function saveDesignSettings(input: {
     const rawSelector = (input.values.nativeSelector ?? "").trim();
     // 留空 = 用内置候选：落 `null`，契约侧 `sanitizeSelector` 会补默认值
     const nativeSelector = rawSelector ? sanitizeSelector(rawSelector) : null;
+
+    // Pro 门控（§19.3 后端拒写）：Free 只能保存**未被改动**的 Pro 现值，
+    // 不可再编辑外观（#27）与缺货策略（#13）——降级后保留现值渲染，仅锁编辑。
+    const current = await getDesignSettings(input.shop);
+    const plan = await resolvePlan(input.shop);
+    if (!hasFeature(plan, "custom_style") && styleChanged(current.style, style)) {
+        throw new TablelyError("error.proRequired");
+    }
+    if (!hasFeature(plan, "out_of_stock") && outOfStock !== current.outOfStock) {
+        throw new TablelyError("error.proRequired");
+    }
 
     await ensureShopSettings(input.shop);
     await prisma.shopSettings.update({
