@@ -39,6 +39,17 @@ export type FeedbackStyle = (typeof FEEDBACK_STYLES)[number];
 export const RADIUS_MIN = 0;
 export const RADIUS_MAX = 24;
 
+/**
+ * 批发门控模式（M10 / §1.4 #19）：`off` 不门控 / `hide_price` 隐藏价 / `hide_table` 隐藏整表。
+ * Liquid 侧按 `customer.tags` 与登录态实时比对（§五 gate）。
+ */
+export const GATE_MODES = ["off", "hide_price", "hide_table"] as const;
+export type GateMode = (typeof GATE_MODES)[number];
+
+/** 阶梯价模型（§2.2：A = 百分比 / B = 固定单价；Function 在 M12 落地） */
+export const TIER_MODELS = ["percent", "fixed"] as const;
+export type TierModel = (typeof TIER_MODELS)[number];
+
 /** 外观样式契约（§五；全部可选，`null` = 跟随主题 / 用默认） */
 export type ShopStyleContract = {
     /** 品牌色 `#rrggbb`；`null` = 从 `currentColor` 派生（最兼容） */
