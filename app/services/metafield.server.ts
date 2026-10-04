@@ -24,10 +24,12 @@ import {
     DENSITIES,
     FEEDBACK_STYLES,
     FONTS,
+    GATE_MODES,
     OUT_OF_STOCK_MODES,
     RADIUS_MAX,
     RADIUS_MIN,
     TAX_DISPLAYS,
+    TIER_MODELS,
     type Density,
     type FeedbackStyle,
     type FontChoice,
@@ -81,10 +83,14 @@ export type {
     ShopStyleContract,
 } from "../design-choices";
 
-/** 门控模式（§五 gate；Liquid 侧按 `customer.tags` 实时比对，M10 落地） */
-export const GATE_MODES = ["off", "hide_price", "hide_table"] as const;
-/** 阶梯价模型（§2.2：A = 百分比 / B = 固定单价；M12 落地） */
-export const TIER_MODELS = ["percent", "fixed"] as const;
+/**
+ * 门控模式（§五 gate；Liquid 侧按 `customer.tags` 实时比对，M10 落地）
+ * 与阶梯价模型（§2.2：A = 百分比 / B = 固定单价；M12 落地）。
+ *
+ * 真源在 `app/design-choices.ts`（客户端安全，M8 同法）：路由组件要用同一份白名单
+ * 渲染下拉，直接 import 本 `.server.ts` 会把 server-only 模块拖进客户端包。
+ */
+export { GATE_MODES, TIER_MODELS };
 
 /* ============================== 契约类型 ============================== */
 

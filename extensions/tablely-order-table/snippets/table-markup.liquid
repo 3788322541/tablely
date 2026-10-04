@@ -23,6 +23,9 @@
   · 缩略图 `loading="lazy"` + 固定宽高（P3）。
   · `hideNative` 的 `<style>` 三重守卫：`enabled` + 商品级 `enabled` + 本次确实渲染；
     选择器做字符清洗且**不含 `!important`**（§2.8 / §十二 验收 14、15）。
+  · **批发门控 · 隐藏价**（M10 / §1.4 #19）：`tly_price_hidden`（由 `order-table.liquid` 传入）为真时
+    关闭价格列，并**不输出** `data-price` / 合计 / 起订金额门槛 —— 既不泄露价，也不会因合计恒为 0
+    而把提交按钮永久禁用（§2.8 安全兜底）。
   · M5 的步进器 / 行内加购按钮 / 合计 / 起订金额**全部依赖 JS**（渐进增强）：
     JS 就绪前由 CSS 隐藏（`data-tablely-ready`），无 JS 时退回「纯原生多行表单」，
     各布局里都不出现点不动的死按钮（§五 无 JS 兜底）。
@@ -64,6 +67,18 @@
   {%- assign tly_min = tly_tbl.orderMinAmount -%}
 {%- elsif tly_settings.orderMinAmount != nil and tly_settings.orderMinAmount != blank -%}
   {%- assign tly_min = tly_settings.orderMinAmount -%}
+{%- endif -%}
+
+{%- comment %}
+  门控 · 隐藏价（M10 / §1.4 #19 / §五 gate）：不合格顾客只看行与数量、不看价格。
+  除关掉价格列外，还必须**刻意不输出任何价格衍生**：行上的 `data-price`、合计、起订金额门槛
+  —— 任何一处泄露都能让价格被直接读到或反推（§2.8）。把 `tly_min` 清空即让起订金额整块与
+  `data-tablely-order-min` 属性一并消失，从而不会出现「合计恒为 0 → 提交被永久禁用」。
+  ⚠️ 本片段由 `render` 引入（隔离作用域），标志位必须由 `order-table.liquid` 显式传入。
+{%- endcomment -%}
+{%- if tly_price_hidden -%}
+  {%- assign col_price = false -%}
+  {%- assign tly_min = '' -%}
 {%- endif -%}
 
 {%- comment %}
@@ -150,7 +165,7 @@
               class="tablely-row tablely-item tablely-item--{{ tly_layout }}{% unless v_ok %} tablely-row--soldout{% endunless %}"
               data-tablely-row
               data-vid="{{ v.id }}"
-              data-price="{{ v.price }}"
+              {%- unless tly_price_hidden %} data-price="{{ v.price }}"{% endunless %}
               data-min="{{ row.min | default: 1 }}"
               {%- if row.max %} data-max="{{ row.max }}"{% endif %}
               data-step="{{ row_step }}"
@@ -238,7 +253,7 @@
                       class="tablely-row tablely-matrix-item{% unless v_ok %} tablely-row--soldout{% endunless %}"
                       data-tablely-row
                       data-vid="{{ v.id }}"
-                      data-price="{{ v.price }}"
+                      {%- unless tly_price_hidden %} data-price="{{ v.price }}"{% endunless %}
                       data-min="{{ mrow.min | default: 1 }}"
                       {%- if mrow.max %} data-max="{{ mrow.max }}"{% endif %}
                       data-step="{{ row_step }}"
@@ -307,7 +322,7 @@
                 class="tablely-row{% unless v_ok %} tablely-row--soldout{% endunless %}"
                 data-tablely-row
                 data-vid="{{ v.id }}"
-                data-price="{{ v.price }}"
+                {%- unless tly_price_hidden %} data-price="{{ v.price }}"{% endunless %}
                 data-min="{{ row.min | default: 1 }}"
                 {%- if row.max %} data-max="{{ row.max }}"{% endif %}
                 data-step="{{ row_step }}"
@@ -354,7 +369,10 @@
       · `role="status"` 只给「还差 X」这一句，避免每次改数量都播报整串进度（B14 降噪）。
     {%- endcomment -%}
     <div class="tablely-summary">
-      <span class="tablely-summary-text" data-tablely-summary></span>
+      {%- comment %} 隐藏价时**不渲染**合计（合计文案含金额；JS 侧对缺元素有 null 守卫） {%- endcomment -%}
+      {%- unless tly_price_hidden -%}
+        <span class="tablely-summary-text" data-tablely-summary></span>
+      {%- endunless -%}
       {%- if tly_min != '' -%}
         <span class="tablely-ordermin" data-tablely-ordermin>
           <span class="tablely-ordermin-label" data-tablely-ordermin-label></span>

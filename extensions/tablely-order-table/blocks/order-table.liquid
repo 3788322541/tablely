@@ -39,6 +39,39 @@
   {%- assign tly_show = true -%}
 {%- endif -%}
 
+{%- comment %}
+  ③ 批发门控（M10 / §1.4 #19 / §五 gate）—— **按登录态 + `customer.tags` 实时判定**，
+     静态 metafield 只存「模式 + 合格标签」，不存「某位顾客是否可见」（§2.4）。
+     · `off`：不门控；
+     · 合格 = **已登录** 且 `customer.tags` 命中合格标签任一；
+     · 不合格：`hide_table` → 整块不渲染（`tly_show=false`，于是**主题自带加购区不被隐藏**，
+       原生入口天然保留，符合 §2.8「绝不出现没有加购入口」）；`hide_price` → 传标志给
+       `table-markup` 隐藏价格列与一切价格衍生输出。
+     ⚠️ `customer` 未登录时为 nil，`customer.tags` 也是 nil，故「未登录 = 不合格」无需额外判断。
+{%- endcomment -%}
+{%- assign tly_gate = tly_settings.gate -%}
+{%- assign tly_gate_mode = tly_gate.mode | default: 'off' -%}
+{%- assign tly_price_hidden = false -%}
+{%- if tly_show and tly_gate_mode != 'off' -%}
+  {%- assign tly_allowed = tly_gate.tags -%}
+  {%- assign tly_qualified = false -%}
+  {%- if customer and tly_allowed and tly_allowed.size > 0 -%}
+    {%- for tly_tag in customer.tags -%}
+      {%- if tly_allowed contains tly_tag -%}
+        {%- assign tly_qualified = true -%}
+        {%- break -%}
+      {%- endif -%}
+    {%- endfor -%}
+  {%- endif -%}
+  {%- unless tly_qualified -%}
+    {%- if tly_gate_mode == 'hide_table' -%}
+      {%- assign tly_show = false -%}
+    {%- else -%}
+      {%- assign tly_price_hidden = true -%}
+    {%- endif -%}
+  {%- endunless -%}
+{%- endif -%}
+
 {%- if tly_show -%}
   {%- comment %}
     布局：商品级覆写 → 店铺级默认 → 表格。
@@ -61,7 +94,7 @@
   >
     {% render 'table-style', tly_settings: tly_settings %}
     {% render 'table-runtime', tly_settings: tly_settings %}
-    {% render 'table-markup', tly_settings: tly_settings, tly_tbl: tly_tbl, tly_layout: tly_layout %}
+    {% render 'table-markup', tly_settings: tly_settings, tly_tbl: tly_tbl, tly_layout: tly_layout, tly_price_hidden: tly_price_hidden %}
   </div>
 {%- endif -%}
 
