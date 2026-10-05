@@ -78,10 +78,14 @@ jobs:
             pricing:
               - 'extensions/tablely-pricing/**'
 
+      # 本 job 只用 CLI 工具链（构建 function wasm + 跑 fixture），**不跑应用运行时**，
+      # 故 Node 版本无需与生产容器（node:20-alpine）一致：Shopify CLI 4.8.0 依赖
+      # `node:module` 的 `enableCompileCache`（Node ≥ 22.1），用 20 会直接 SyntaxError。
+      # 应用的 typecheck / build / 单测仍由 verify job 在 **Node 20** 上把关（与生产一致）。
       - if: steps.filter.outputs.pricing == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # 改价是审核敏感点：每次改 Function 都必须重跑（§21.2）。
