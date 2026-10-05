@@ -91,11 +91,18 @@ jobs:
       - if: steps.filter.outputs.pricing == 'true'
         run: npm ci
 
+      # Function 测试助手（@shopify/shopify-function-test-helpers）会直接 spawn **裸 `shopify`**
+      # 命令去构建 wasm，因此 runner 上必须存在 CLI —— 本地开发者机器同理由全局 CLI 提供。
+      # 用与本地已验证一致的版本（§21.4 记录的 4.8.0）；`@shopify/cli` 不进 package.json，
+      # 应用运行时与镜像均不需要它（与 §21.4「CLI 属开发工具、不随镜像发布」一致）。
+      - if: steps.filter.outputs.pricing == 'true'
+        run: npm install -g @shopify/cli@4.8.0
+
       - if: steps.filter.outputs.pricing == 'true'
         run: npm run test:function
 
       - if: steps.filter.outputs.pricing == 'true'
-        run: npx shopify app function build --path extensions/tablely-pricing
+        run: shopify app function build --path extensions/tablely-pricing
 
       - if: steps.filter.outputs.pricing != 'true'
         run: echo "未改动 extensions/tablely-pricing/**，跳过 function job"
