@@ -32,5 +32,11 @@
         "label": "Order minimum: {{ amount }}",
         "progress": "Current {{ current }} / minimum {{ min }}",
         "notMet": "Add {{ amount }} more to reach the order minimum"
+    },
+    "history": {
+        "prefill": "Prefill with my last quantities"
+    },
+    "mixmatch": {
+        "hint": "Add {{ n }} more to save {{ percent }}%"
     }
 }

@@ -7,6 +7,7 @@ import {
     redactApplicationsByCustomer,
     summarizeApplicationsForCustomer,
 } from "../services/applications.server";
+import { nullifyQuotesForCustomer } from "../services/quotes.server";
 
 /**
  * 强制合规 webhook（一个路由处理 3 个主题：customers/data_request · customers/redact · shop/redact）
@@ -55,7 +56,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       if (normalized === "customers_redact") {
         const deleted = await redactApplicationsByCustomer({ shop, email, customerId });
+        // 报价单是商家的商业凭据：脱敏（customerId → null）并保留整行（§15.8.4 / §8.1）
+        const unlinked = await nullifyQuotesForCustomer({ shop, customerId });
         logStructured("info", "applications.redacted", { shop, deleted });
+        logStructured("info", "quotes.unlinked", { shop, unlinked });
       } else {
         const rows = await summarizeApplicationsForCustomer({ shop, email, customerId });
         logStructured("info", "applications.data_request", { shop, count: rows.length });

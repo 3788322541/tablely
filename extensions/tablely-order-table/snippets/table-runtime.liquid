@@ -27,6 +27,11 @@
       "moneyFormat": {{ shop.money_format | json }},
       "cartAddUrl": {{ routes.cart_add_url | json }},
       "cartUrl": {{ routes.cart_url | json }},
+      "reportUrl": {{ tly_settings.reportUrl | json }},
+      "shop": {{ shop.permanent_domain | json }},
+      "productId": {{ product.id | json }},
+      "customerId": {{ customer.id | json }},
+      "historyUrl": {{ '/apps/tablely/history' | json }},
       "strings": {
         "added": {{ 'feedback.added' | t | json }},
         "partial": {{ 'feedback.partial' | t | json }},
@@ -39,7 +44,9 @@
         "summary": {{ 'table.summary' | t | json }},
         "orderMinLabel": {{ 'orderMin.label' | t | json }},
         "orderMinProgress": {{ 'orderMin.progress' | t | json }},
-        "orderMinNotMet": {{ 'orderMin.notMet' | t | json }}
+        "orderMinNotMet": {{ 'orderMin.notMet' | t | json }},
+        "historyPrefill": {{ 'history.prefill' | t | json }},
+        "mixmatchHint": {{ 'mixmatch.hint' | t | json }}
       }
     }
   {%- else -%}

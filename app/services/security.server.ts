@@ -213,3 +213,19 @@ export const APPLICATION_RATE_LIMIT = {
 export const applicationLimiter = createSlidingWindowLimiter(
     APPLICATION_RATE_LIMIT,
 );
+
+/**
+ * 快速补货提交限流口径：同店铺 + IP 10 分钟 ≤30 次。
+ *
+ * 该端点公开可访问且每次会触发 Admin API 查询（SKU 匹配），必须防刷；
+ * 上限比申请表单宽松，因为顾客可能反复调整清单。
+ */
+export const QUICK_ORDER_RATE_LIMIT = {
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+} as const;
+
+/** 快速补货的进程内限流器（`proxy.quick-order` 与单测共用同一实例） */
+export const quickOrderLimiter = createSlidingWindowLimiter(
+    QUICK_ORDER_RATE_LIMIT,
+);

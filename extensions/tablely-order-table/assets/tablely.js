@@ -48,6 +48,12 @@
   var moneyFormat = (config && config.moneyFormat) || '${{amount}}';
   var addUrl = (config && config.cartAddUrl) || '/cart/add';
   var cartUrl = (config && config.cartUrl) || '/cart';
+  /* M13 加购上报（A3）：地址 / 店铺 / 商品 / 客户，缺一即跳过上报（绝不影响加购） */
+  var reportUrl = (config && config.reportUrl) || '';
+  var shopDomain = (config && config.shop) || '';
+  var productId = (config && config.productId) || '';
+  var customerId = (config && config.customerId) || '';
+  var historyUrl = (config && config.historyUrl) || '/apps/tablely/history';
   /* M8 反馈呈现方式：inline（默认）/ toast / both */
   var feedbackStyle =
     (config && config.settings && config.settings.feedbackStyle) || 'inline';
@@ -391,6 +397,138 @@
       .catch(function () {});
   }
 
+  /* ============================== 加购上报（M13 / A3） ============================== */
+
+  /**
+   * 把一次成功加购的每行上报给应用（供 #24 历史加购 / #37 预填 与 #26 统计）。
+   *
+   * 硬约束（§十二 验收 26）：**上报失败绝不阻塞加购**。
+   *   · 未配置 `reportUrl` / 店铺域 / 商品 → 直接跳过；
+   *   · 优先 `navigator.sendBeacon`（页面可能正在跳转，beacon 不会被取消）；
+   *   · 兜底 `fetch(..., keepalive)`；两条路径的异常**一律吞掉**。
+   * 载体是 `text/plain`（CORS 安全列表类型，不触发预检）。
+   */
+  function reportAddToCart(lineItems, source) {
+    if (!reportUrl || !shopDomain || !lineItems || !lineItems.length) return;
+    var rows = lineItems.length;
+    for (var i = 0; i < lineItems.length; i++) {
+      var item = lineItems[i];
+      var quantity = parseInt(item.quantity, 10);
+      if (!isFinite(quantity) || quantity <= 0) continue;
+      sendReport(
+        JSON.stringify({
+          shop: shopDomain,
+          productId: productId,
+          variantId: String(item.id),
+          quantity: quantity,
+          rows: rows,
+          source: source || 'table',
+          customerId: customerId || '',
+        }),
+      );
+    }
+  }
+
+  function sendReport(body) {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        var blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+        if (navigator.sendBeacon(reportUrl, blob)) return;
+      }
+    } catch (error) {
+      /* 落到 fetch 兜底 */
+    }
+    try {
+      fetch(reportUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: body,
+        keepalive: true,
+        mode: 'cors',
+      }).catch(function () {});
+    } catch (error) {
+      /* 上报失败绝不影响加购 */
+    }
+  }
+
+  /* ============================== 历史加购预填（M13 / Y15 / §15.7） ============================== */
+
+  /**
+   * 预填数量的合法化（纯函数，便于单测）：**先吸附到 `step`，再 clamp 到 `min / max`**
+   * （吸附后再 clamp，避免越界 —— §15.7 第 1 条）。非正数 / 非法 → 0（= 该行不填）。
+   */
+  function prefillQuantity(recorded, bounds) {
+    var step = bounds.step > 0 ? bounds.step : 1;
+    var min = bounds.min > 0 ? bounds.min : 1;
+    var qty = Math.round(recorded);
+    if (!isFinite(qty) || qty < 1) return 0;
+    qty = Math.ceil(qty / step) * step;
+    qty = Math.max(min, qty);
+    if (bounds.max !== null && qty > bounds.max) qty = Math.max(min, bounds.max);
+    return qty;
+  }
+
+  function historyBox(form) {
+    return form ? form.querySelector('[data-tablely-history]') : null;
+  }
+
+  /**
+   * 拉一次本商品的历史加购记录：**有记录才显出按钮**。
+   * ⚠️ 加载时**绝不自动改数量**（自动覆盖会让客户困惑甚至误下单，§15.7）；
+   * 取不到 / 未登录 / 非 Pro 时接口返回空列表，按钮保持隐藏。失败一律静默。
+   */
+  function loadHistory(form) {
+    var box = historyBox(form);
+    if (!box || !historyUrl || !productId) return;
+    fetch(historyUrl + '?productId=' + encodeURIComponent(productId), {
+      headers: { Accept: 'application/json' },
+    })
+      .then(function (response) {
+        return response.ok ? response.json() : null;
+      })
+      .then(function (data) {
+        var lines = data && data.lines ? data.lines : [];
+        if (!lines.length) return;
+        form._tablelyHistory = lines;
+        box.hidden = false;
+      })
+      .catch(function () {
+        /* 取不到历史不影响表格本身 */
+      });
+  }
+
+  /** 手动触发：按上次数量填入（下架行填 0 并在行内标原因，绝不填会导致失败的数值） */
+  function applyHistory(form) {
+    var lines = form._tablelyHistory;
+    if (!lines || !lines.length) return;
+    for (var i = 0; i < lines.length; i++) {
+      var row = form.querySelector(
+        ROW_SELECTOR + '[data-vid="' + String(lines[i].variantId) + '"]',
+      );
+      if (!row) continue;
+      if (row.getAttribute('data-soldout') === 'true') {
+        var soldInput = qtyInput(row);
+        if (soldInput) soldInput.value = '0';
+        setRowMessage(row, { key: 'soldOut' });
+        continue;
+      }
+      var input = qtyInput(row);
+      if (!input || input.disabled) continue;
+      var max = optNumAttr(row, 'data-max');
+      var stock = optNumAttr(row, 'data-stock');
+      if (stock !== null) max = max === null ? stock : Math.min(max, stock);
+      input.value = String(
+        prefillQuantity(lines[i].quantity, {
+          min: numAttr(row, 'data-min', 1),
+          max: max,
+          step: numAttr(row, 'data-step', 1),
+        }),
+      );
+      setRowMessage(row, null);
+    }
+    updateSummary(form);
+  }
+
   /* ============================== 收集与提交 ============================== */
 
   /**
@@ -504,6 +642,7 @@
           flashAdded(row);
           showFeedback(form, 'ok', t('added'));
           refreshCart();
+          reportAddToCart([{ id: vid, quantity: qty }], 'table');
         } else {
           setRowMessage(row, { key: 'error' });
           showFeedback(form, 'error', t('error'));
@@ -556,6 +695,7 @@
         }
         for (var i = 0; i < plan.rows.length; i++) flashAdded(plan.rows[i]);
         markFailures(plan.failures);
+        reportAddToCart(plan.items, 'table');
         var failCount = plan.failures.length;
         // 规则 2：部分成功给汇总（整体算成功，逐行失败原因已由 role="alert" 播报）
         showFeedback(
@@ -596,6 +736,13 @@
     if (addButton && !addButton.disabled) {
       event.preventDefault();
       addRow(form, addButton.closest(ROW_SELECTOR));
+      return;
+    }
+
+    var prefillButton = target.closest('[data-tablely-history-prefill]');
+    if (prefillButton) {
+      event.preventDefault();
+      applyHistory(form);
     }
   }
 
@@ -613,6 +760,7 @@
     window.__TABLELY_TEST__.rowError = rowError;
     window.__TABLELY_TEST__.nextQuantity = nextQuantity;
     window.__TABLELY_TEST__.computeTotals = computeTotals;
+    window.__TABLELY_TEST__.prefillQuantity = prefillQuantity;
   }
 
   /* ============================== 装配 ============================== */
@@ -624,6 +772,7 @@
     form.addEventListener('input', onInput);
     form.setAttribute(READY_ATTR, 'true');
     updateSummary(form);
+    loadHistory(form);
   }
 
   function init() {

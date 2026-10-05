@@ -12,7 +12,10 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
 import { hasFeature } from "../plan";
-import { ADMIN_PAGE_SIZE } from "../perf-limits";
+import { ADMIN_PAGE_SIZE, CSV_MAX_ROWS } from "../perf-limits";
+import { PROXY_SUBPATH } from "../proxy-paths";
+import { importCsv } from "../services/csvImport.server";
+import { buildQuotePublicUrl, createQuote } from "../services/quotes.server";
 import {
     addProductTables,
     countEnabledTables,
@@ -142,6 +145,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     return {
         locale,
+        shop: session.shop,
         query,
         page: safePage,
         pageCount,
@@ -206,6 +210,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             return { ok: true as const, intent: "delete-template" as const };
         }
 
+        if (intent === "import-csv") {
+            const file = formData.get("file");
+            if (!(file instanceof File) || file.size === 0) {
+                return { ok: false as const, intent, errorKey: "csv.empty" };
+            }
+            const csvText = await file.text();
+            const result = await importCsv({
+                admin,
+                shop: session.shop,
+                csvText,
+            });
+            return { ok: true as const, intent: "import-csv" as const, result };
+        }
+
+        if (intent === "create-quote") {
+            const productIds = formData.getAll("productId").map((value) => String(value));
+            if (productIds.length === 0) {
+                return { ok: false as const, intent, errorKey: "quote.selectProducts" };
+            }
+            const currency = await getShopCurrency(admin);
+            const created = await createQuote({
+                shop: session.shop,
+                admin,
+                productIds,
+                currency,
+                note: String(formData.get("note") ?? ""),
+                validDays: formData.get("validDays"),
+                customerId: String(formData.get("customerId") ?? ""),
+            });
+            if (!created) {
+                return { ok: false as const, intent, errorKey: "quote.selectProducts" };
+            }
+            return {
+                ok: true as const,
+                intent: "create-quote" as const,
+                token: created.token,
+                url: buildQuotePublicUrl(session.shop, created.token),
+            };
+        }
+
         if (intent === "apply-template") {
             const result = await applyTemplate({
                 admin,
@@ -259,6 +303,7 @@ const checkedOf = (event: Event): boolean =>
 export default function TablesPage() {
     const {
         locale,
+        shop,
         query,
         page,
         pageCount,
@@ -279,11 +324,15 @@ export default function TablesPage() {
 
     const canOrderMinimum = hasFeature(plan, "order_minimum");
     const canTemplates = hasFeature(plan, "layout_templates");
+    const canCsv = hasFeature(plan, "csv");
+    const canQuote = hasFeature(plan, "quote");
 
     const shopMinFetcher = useFetcher<typeof action>();
     const addFetcher = useFetcher<typeof action>();
     const toggleFetcher = useFetcher<typeof action>();
     const templateFetcher = useFetcher<typeof action>();
+    const csvFetcher = useFetcher<typeof action>();
+    const quoteFetcher = useFetcher<typeof action>();
 
     const [searchInput, setSearchInput] = useState(query);
     const [shopMin, setShopMin] = useState(shopOrderMinAmount ?? "");
@@ -293,6 +342,9 @@ export default function TablesPage() {
     const [applyScope, setApplyScope] = useState<"all" | "collection" | "selected">("all");
     const [applyCollection, setApplyCollection] = useState("");
     const [overwriteRules, setOverwriteRules] = useState(false);
+    const [quoteCustomerId, setQuoteCustomerId] = useState("");
+    const [quoteNote, setQuoteNote] = useState("");
+    const [quoteValidDays, setQuoteValidDays] = useState("7");
 
     useEffect(() => {
         setShopMin(shopOrderMinAmount ?? "");
@@ -377,6 +429,55 @@ export default function TablesPage() {
             ? templateFetcher.data.result
             : null;
 
+    // CSV 导入结果（成功 / 失败两态）与下载入口
+    const csvData = csvFetcher.data;
+    const csvResult =
+        csvData && csvData.ok && csvData.intent === "import-csv" ? csvData.result : null;
+    const csvActionError =
+        csvData && csvData.ok === false && csvData.intent === "import-csv" ? csvData : null;
+
+    // 报价单生成结果（Y17 / §15.8）：成功展示 token 链接，失败给可读原因
+    const quoteData = quoteFetcher.data;
+    const quoteResult =
+        quoteData && quoteData.ok && quoteData.intent === "create-quote" ? quoteData : null;
+    const quoteError =
+        quoteData && quoteData.ok === false && quoteData.intent === "create-quote"
+            ? quoteData
+            : null;
+
+    useEffect(() => {
+        if (quoteResult) shopify.toast.show(t("quote.created"));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [quoteResult]);
+
+    /**
+     * 下载与补货页都**在新标签页打开**：CSV 是资源路由（`Content-Disposition: attachment`），
+     * 新标签页是顶层文档，既不会被 App Bridge 的嵌入导航拦截，也不受 iframe 下载限制。
+     */
+    const openExternal = (url: string) =>
+        window.open(url, "_blank", "noopener,noreferrer");
+
+    const importCsvFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const input = event.currentTarget;
+        const file = input.files?.[0];
+        input.value = ""; // 允许重复选择同一文件
+        if (!file) return;
+        const data = new FormData();
+        data.append("intent", "import-csv");
+        data.append("file", file);
+        csvFetcher.submit(data, { method: "post", encType: "multipart/form-data" });
+    };
+
+    const quickOrderUrl = `https://${shop}${PROXY_SUBPATH}/quick-order`;
+
+    /** 复制报价单链接（失败静默：链接在页面上仍可手动选中复制） */
+    const copyQuoteLink = (url: string) => {
+        navigator.clipboard
+            ?.writeText(url)
+            .then(() => shopify.toast.show(t("toast.copied")))
+            .catch(() => {});
+    };
+
     const noData = totalConfigured === 0;
     const noMatch = !noData && rows.length === 0;
 
@@ -442,6 +543,9 @@ export default function TablesPage() {
                                 })}
                         </s-text>
                         <s-stack direction="inline" gap="base">
+                            <s-button onClick={() => openExternal(quickOrderUrl)}>
+                                {t("quickOrder.heading")}
+                            </s-button>
                             <s-button onClick={openPick}>{t("tables.chooseProducts")}</s-button>
                         </s-stack>
                     </s-stack>
@@ -673,7 +777,191 @@ export default function TablesPage() {
                 </s-stack>
             </s-section>
 
-            {/* ③ 布局模板（B12）：保存来自 Drawer；这里负责默认 / 删除 / 按范围套用 */}
+            {/* ③ CSV 模板 / 导出 / 导入（Y16 / §15.6）；导入结果逐行回报 + 错误清单可下载 */}
+            <s-section id="tablely-csv" heading={t("csv.title")}>
+                <s-stack direction="block" gap="base">
+                    <s-text color="subdued">{t("csv.hint")}</s-text>
+                    {!canCsv ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
+
+                    <s-stack direction="inline" gap="base" alignItems="center">
+                        <s-button
+                            disabled={!canCsv}
+                            onClick={() =>
+                                openExternal("/app/tables/export?mode=template")
+                            }
+                        >
+                            {t("csv.downloadTemplate")}
+                        </s-button>
+                        <s-button
+                            disabled={!canCsv}
+                            onClick={() => openExternal("/app/tables/export?mode=export")}
+                        >
+                            {t("csv.export")}
+                        </s-button>
+                        <label>
+                            <s-text color="subdued">{t("csv.import")}</s-text>
+                            <input
+                                type="file"
+                                accept=".csv,text/csv"
+                                disabled={!canCsv || csvFetcher.state !== "idle"}
+                                aria-label={t("csv.chooseFile")}
+                                onChange={importCsvFile}
+                                style={{ display: "block", marginTop: 4 }}
+                            />
+                        </label>
+                    </s-stack>
+
+                    {csvActionError ? (
+                        <s-banner tone="critical">{t(csvActionError.errorKey)}</s-banner>
+                    ) : null}
+
+                    {csvResult ? (
+                        csvResult.ok ? (
+                            <s-stack direction="block" gap="small">
+                                <s-banner
+                                    tone={csvResult.failed > 0 ? "warning" : "success"}
+                                >
+                                    {t("csv.importResult", {
+                                        ok: csvResult.imported,
+                                        fail: csvResult.failed,
+                                    })}
+                                </s-banner>
+                                {csvResult.errors.length > 0 ? (
+                                    <s-stack direction="block" gap="small">
+                                        <s-text color="subdued">
+                                            {t("csv.firstErrors", {
+                                                n: Math.min(20, csvResult.errors.length),
+                                            })}
+                                        </s-text>
+                                        {csvResult.errors
+                                            .slice(0, 20)
+                                            .map((row, index) => (
+                                                <s-text key={`${row.line}-${index}`} color="subdued">
+                                                    {`#${row.line} ${row.sku || "—"} · ${t(row.error)}`}
+                                                </s-text>
+                                            ))}
+                                        {csvResult.errorToken ? (
+                                            <s-stack direction="inline" gap="base">
+                                                <s-button
+                                                    variant="tertiary"
+                                                    onClick={() =>
+                                                        openExternal(
+                                                            `/app/tables/export?mode=errors&token=${encodeURIComponent(
+                                                                csvResult.errorToken ?? "",
+                                                            )}`,
+                                                        )
+                                                    }
+                                                >
+                                                    {t("csv.downloadErrors")}
+                                                </s-button>
+                                            </s-stack>
+                                        ) : null}
+                                    </s-stack>
+                                ) : null}
+                            </s-stack>
+                        ) : (
+                            <s-banner tone="critical">
+                                {csvResult.code === "header"
+                                    ? t(csvResult.headerError)
+                                    : t(
+                                          csvResult.violation === "rows"
+                                              ? "perf.tooManyRows"
+                                              : "perf.csvTooLarge",
+                                          {
+                                              n:
+                                                  csvResult.violation === "rows"
+                                                      ? csvResult.limit
+                                                      : CSV_MAX_ROWS,
+                                          },
+                                      )}
+                            </s-banner>
+                        )
+                    ) : null}
+                </s-stack>
+            </s-section>
+
+            {/* ④ 报价单（Y17 / §15.8）：选中商品 → 实时取价快照 → 打印视图链接 */}
+            <s-section id="tablely-quote" heading={t("quote.title")}>
+                <s-stack direction="block" gap="base">
+                    <s-text color="subdued">{t("quote.hint")}</s-text>
+                    {!canQuote ? (
+                        <ProHint label={t("pro.badge")} upgrade={t("pro.upgrade")} />
+                    ) : null}
+                    {quoteError ? (
+                        <s-banner tone="critical">{t(quoteError.errorKey)}</s-banner>
+                    ) : null}
+                    <s-text color="subdued">
+                        {t("templates.selectedHint", { n: selected.length })}
+                    </s-text>
+                    <s-stack direction="inline" gap="base" alignItems="center">
+                        <s-text-field
+                            label={t("quote.customerId")}
+                            value={quoteCustomerId}
+                            disabled={!canQuote}
+                            onChange={(event) => setQuoteCustomerId(valueOf(event))}
+                        />
+                        <s-number-field
+                            label={t("quote.validDays")}
+                            value={quoteValidDays}
+                            min={1}
+                            max={90}
+                            disabled={!canQuote}
+                            onChange={(event) => setQuoteValidDays(valueOf(event))}
+                        />
+                    </s-stack>
+                    <s-text-field
+                        label={t("quote.note")}
+                        value={quoteNote}
+                        disabled={!canQuote}
+                        onChange={(event) => setQuoteNote(valueOf(event))}
+                    />
+                    <s-stack direction="inline" gap="base">
+                        <s-button
+                            disabled={
+                                !canQuote || selected.length === 0 || quoteFetcher.state !== "idle"
+                            }
+                            onClick={() =>
+                                quoteFetcher.submit(
+                                    {
+                                        intent: "create-quote",
+                                        validDays: quoteValidDays,
+                                        customerId: quoteCustomerId,
+                                        note: quoteNote,
+                                        productId: selected,
+                                    },
+                                    { method: "post" },
+                                )
+                            }
+                        >
+                            {t("quote.generate")}
+                        </s-button>
+                    </s-stack>
+                    {quoteResult ? (
+                        <s-stack direction="block" gap="small">
+                            <s-banner tone="success">{t("quote.created")}</s-banner>
+                            <s-text color="subdued">{quoteResult.url}</s-text>
+                            <s-stack direction="inline" gap="base">
+                                <s-button
+                                    variant="secondary"
+                                    onClick={() => copyQuoteLink(quoteResult.url)}
+                                >
+                                    {t("quote.copyLink")}
+                                </s-button>
+                                <s-button
+                                    variant="secondary"
+                                    onClick={() => openExternal(quoteResult.url)}
+                                >
+                                    {t("quote.open")}
+                                </s-button>
+                            </s-stack>
+                        </s-stack>
+                    ) : null}
+                </s-stack>
+            </s-section>
+
+            {/* ⑤ 布局模板（B12）：保存来自 Drawer；这里负责默认 / 删除 / 按范围套用 */}
             <s-section id="tablely-templates" heading={t("templates.title")}>
                 <s-stack direction="block" gap="base">
                     {templateFailed ? (
@@ -884,7 +1172,7 @@ export default function TablesPage() {
                 </s-stack>
             </s-section>
 
-            {/* ④ 选择商品浮层（?pick=1） */}
+            {/* ⑥ 选择商品浮层（?pick=1） */}
             {pick ? (
                 <div
                     style={{

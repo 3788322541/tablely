@@ -32,5 +32,11 @@
         "label": "Minimum de commande : {{ amount }}",
         "progress": "Actuel {{ current }} / minimum {{ min }}",
         "notMet": "Ajoutez {{ amount }} pour atteindre le minimum"
+    },
+    "history": {
+        "prefill": "Préremplir avec mes dernières quantités"
+    },
+    "mixmatch": {
+        "hint": "Ajoutez {{ n }} de plus pour {{ percent }}%"
     }
 }

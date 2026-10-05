@@ -32,5 +32,11 @@
         "label": "最低注文金額：{{ amount }}",
         "progress": "現在 {{ current }} / 最低 {{ min }}",
         "notMet": "最低注文金額まであと {{ amount }}"
+    },
+    "history": {
+        "prefill": "前回の数量で入力する"
+    },
+    "mixmatch": {
+        "hint": "あと {{ n }} 点で {{ percent }}% オフ"
     }
 }

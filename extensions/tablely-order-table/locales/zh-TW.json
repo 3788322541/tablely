@@ -32,5 +32,11 @@
         "label": "起訂金額：{{ amount }}",
         "progress": "目前 {{ current }} / 起訂 {{ min }}",
         "notMet": "還差 {{ amount }} 達到起訂金額"
+    },
+    "history": {
+        "prefill": "按上次數量預填"
+    },
+    "mixmatch": {
+        "hint": "再加 {{ n }} 件享 {{ percent }}% 折扣"
     }
 }
