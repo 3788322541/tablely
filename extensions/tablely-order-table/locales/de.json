@@ -32,5 +32,11 @@
         "label": "Mindestbestellwert: {{ amount }}",
         "progress": "Aktuell {{ current }} / Minimum {{ min }}",
         "notMet": "Noch {{ amount }} bis zum Mindestbestellwert"
+    },
+    "history": {
+        "prefill": "Mit meinen letzten Mengen vorausfüllen"
+    },
+    "mixmatch": {
+        "hint": "Noch {{ n }} hinzufügen und {{ percent }}% sparen"
     }
 }

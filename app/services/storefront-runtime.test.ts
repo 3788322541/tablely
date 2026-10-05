@@ -29,6 +29,10 @@ type Runtime = {
         bounds: { min: number; max: number | null; step: number },
     ) => number;
     computeTotals: (form: unknown) => { rows: number; units: number; cents: number };
+    prefillQuantity: (
+        recorded: number,
+        bounds: { min: number; max: number | null; step: number },
+    ) => number;
 };
 
 const ASSET = join(
@@ -306,6 +310,48 @@ describe("computeTotals（合计：行数 / 件数 / 折前小计）", () => {
     it("缺 data-price 的行按 0 计（不产生 NaN 污染合计）", () => {
         const form = fakeForm({}, [fakeRow({ "data-min": "1" }, "3")]);
         expect(runtime.computeTotals(form).cents).toBe(0);
+    });
+});
+
+/* ------------------------------------------------------------------ *
+ * ⑥ 历史加购预填的合法化（M13 / Y15 / §15.7）
+ * ------------------------------------------------------------------ */
+
+describe("prefillQuantity（历史数量 → 合法数量）", () => {
+    const bounds = (over: Partial<{ min: number; max: number | null; step: number }> = {}) => ({
+        min: 1,
+        max: null,
+        step: 1,
+        ...over,
+    });
+
+    it("无约束时原样取整（四舍五入）", () => {
+        expect(runtime.prefillQuantity(12, bounds())).toBe(12);
+        expect(runtime.prefillQuantity(12.4, bounds())).toBe(12);
+        expect(runtime.prefillQuantity(12.5, bounds())).toBe(13);
+    });
+
+    it("非正数 / 非法一律 0（该行不填，绝不产生会导致提交失败的数值）", () => {
+        expect(runtime.prefillQuantity(0, bounds())).toBe(0);
+        expect(runtime.prefillQuantity(-5, bounds())).toBe(0);
+        expect(runtime.prefillQuantity(NaN, bounds())).toBe(0);
+        expect(runtime.prefillQuantity(Infinity, bounds())).toBe(0);
+    });
+
+    it("先吸附到 step（向上取整到倍数），再抬到 min", () => {
+        expect(runtime.prefillQuantity(11, bounds({ step: 6 }))).toBe(12);
+        expect(runtime.prefillQuantity(3, bounds({ min: 6, step: 2 }))).toBe(6);
+        expect(runtime.prefillQuantity(9, bounds({ min: 6, step: 2 }))).toBe(10);
+    });
+
+    it("超上限时落到上限（上限低于 min 时仍保底 min，不产生非法值）", () => {
+        expect(runtime.prefillQuantity(999, bounds({ max: 100 }))).toBe(100);
+        expect(runtime.prefillQuantity(999, bounds({ min: 6, max: 4 }))).toBe(6);
+    });
+
+    it("step / min 非法时退回 1（不因脏数据算出 0 或负值）", () => {
+        expect(runtime.prefillQuantity(5, { min: -3, max: null, step: 0 })).toBe(5);
+        expect(runtime.prefillQuantity(0, { min: -3, max: null, step: 0 })).toBe(0);
     });
 });
 

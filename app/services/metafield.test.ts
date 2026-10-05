@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
     COLUMN_KEYS,
@@ -17,6 +17,7 @@ import {
     normalizeLayout,
     normalizeRadius,
     pickColumnOverrides,
+    resolveReportUrl,
     sanitizeSelector,
     toShopSettingsContract,
     toShopStyleContract,
@@ -128,6 +129,22 @@ describe("formatAmount", () => {
     });
 });
 
+/* ======================== 店面加购上报地址（M13 / §十五 A3） ======================== */
+
+describe("resolveReportUrl", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("未配置 SHOPIFY_APP_URL → 空串（店面据此跳过上报，绝不影响加购）", () => {
+        vi.stubEnv("SHOPIFY_APP_URL", "");
+        expect(resolveReportUrl()).toBe("");
+    });
+
+    it("已配置 → <app>/api/addtocart，并去掉尾部斜杠", () => {
+        vi.stubEnv("SHOPIFY_APP_URL", "https://tablely.zhenjunit.com/");
+        expect(resolveReportUrl()).toBe("https://tablely.zhenjunit.com/api/addtocart");
+    });
+});
+
 /* ======================== Shop 级契约序列化 ======================== */
 
 describe("toShopSettingsContract", () => {
@@ -151,6 +168,7 @@ describe("toShopSettingsContract", () => {
                 font: "inherit",
             },
             feedbackStyle: "inline",
+            reportUrl: "",
         });
     });
 

@@ -32,5 +32,11 @@
         "label": "Pedido mínimo: {{ amount }}",
         "progress": "Actual {{ current }} / mínimo {{ min }}",
         "notMet": "Añade {{ amount }} más para el mínimo"
+    },
+    "history": {
+        "prefill": "Rellenar con mis últimas cantidades"
+    },
+    "mixmatch": {
+        "hint": "Añade {{ n }} más y ahorra {{ percent }}%"
     }
 }

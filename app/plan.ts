@@ -85,6 +85,8 @@ export type ProFeature =
     | "csv"
     /** #24 / #37 历史加购再下单与预填 */
     | "reorder"
+    /** #25 报价单导出 */
+    | "quote"
     /** #26 加购统计 */
     | "stats"
     /** #27 样式自定义（品牌色 / 圆角 / 密度 / 字体） */
@@ -112,6 +114,7 @@ export const PRO_FEATURES: readonly ProFeature[] = [
     "quick_order",
     "csv",
     "reorder",
+    "quote",
     "stats",
     "custom_style",
     "layout_templates",

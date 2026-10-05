@@ -20,13 +20,20 @@ import {
     applicationLimiter,
     constantTimeEqual,
     hmacSha256Hex,
+    quickOrderLimiter,
 } from "./security.server";
 
-/** 店铺同域的回源前缀（`[app_proxy]` 的 `subpath` + `prefix`，§15.2） */
-export const PROXY_SUBPATH = "/apps/tablely";
-
-/** 申请表单的顾客可见地址：`https://<shop>/apps/tablely/apply` */
-export const APPLY_PATH = `${PROXY_SUBPATH}/apply`;
+/**
+ * 顾客可见路径的真源在客户端安全的 `app/proxy-paths.ts`（后台客户端组件也要用，
+ * 直接从这里导出会把 server-only 模块拖进客户端包）；此处**原样重导出**，不变更调用方。
+ */
+export {
+    PROXY_SUBPATH,
+    APPLY_PATH,
+    QUICK_ORDER_PATH,
+    HISTORY_PATH,
+    QUOTE_PATH,
+} from "../proxy-paths";
 
 /** 时间戳容忍窗口（秒）—— 与 Shopify SDK 一致 */
 export const APP_PROXY_TIMESTAMP_TOLERANCE_SEC = 90;
@@ -133,4 +140,19 @@ export function allowApplicationSubmission(shop: string, ip: string): boolean {
 /** 供单测重置限流计数 */
 export function resetApplicationRateLimit(): void {
     applicationLimiter.reset();
+}
+
+/** 快速补货提交限流的键：按店铺 + IP 隔离（公开端点，防刷 Admin API） */
+export function quickOrderRateLimitKey(shop: string, ip: string): string {
+    return `quick-order:${shop}:${ip}`;
+}
+
+/** 快速补货提交是否放行（进程内滑动窗口，口径见 `security.server.ts`） */
+export function allowQuickOrderSubmission(shop: string, ip: string): boolean {
+    return quickOrderLimiter.allow(quickOrderRateLimitKey(shop, ip));
+}
+
+/** 供单测重置限流计数 */
+export function resetQuickOrderRateLimit(): void {
+    quickOrderLimiter.reset();
 }

@@ -139,6 +139,17 @@
   <div class="tablely-feedback" role="status" aria-live="polite" data-tablely-feedback-ok hidden></div>
   <div class="tablely-feedback tablely-feedback--error" role="alert" data-tablely-feedback-err hidden></div>
 
+  {%- comment %}
+    Y15（M13）历史加购预填：**仅登录客户**才有意义（未登录无法识别「你上次买了什么」），
+    故未登录时**整块不渲染**（§十二 验收 34）。按钮初始 `hidden`，由 JS 在接口确认
+    「本商品确有历史记录」后才显出 —— **绝不自动改数量**，必须顾客手动点击（§15.7）。
+  {%- endcomment -%}
+  {%- if customer -%}
+    <div class="tablely-history" data-tablely-history hidden>
+      <button type="button" class="tablely-history-btn" data-tablely-history-prefill>{{ 'history.prefill' | t }}</button>
+    </div>
+  {%- endif -%}
+
   <div class="tablely-scroll">
     {%- if tly_layout == 'grid' or tly_layout == 'list' -%}
       {%- comment %}

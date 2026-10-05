@@ -182,6 +182,11 @@ export type ShopSettingsContract = {
     style: ShopStyleContract;
     /** M8：反馈呈现方式（inline / toast / both） */
     feedbackStyle: FeedbackStyle;
+    /**
+     * M13：店面加购上报地址（`${SHOPIFY_APP_URL}/api/addtocart`）。
+     * 空串 = 应用地址未配置，店面据此**跳过上报**（绝不因此影响加购）。
+     */
+    reportUrl: string;
 };
 
 /** 序列化 Shop 级契约所需的 DB 行（结构性类型，避免把 Prisma 拖进单测） */
@@ -367,6 +372,17 @@ export function toShopStyleContract(theme: unknown): ShopStyleContract {
     };
 }
 
+/**
+ * M13：店面加购上报地址。
+ *
+ * 由**应用自身**的 `SHOPIFY_APP_URL` 拼出（不取店铺域名，故跨域且不受自定义域影响，
+ * 与 Linkly 的 click 上报同一思路）。未配置时返回空串，店面侧会跳过上报。
+ */
+export function resolveReportUrl(): string {
+    const base = (process.env.SHOPIFY_APP_URL ?? "").trim().replace(/\/+$/, "");
+    return base ? `${base}/api/addtocart` : "";
+}
+
 /** DB 行 → Shop 级契约（**唯一生成处**；Design 页保存与 afterAuth 播种共用） */
 export function toShopSettingsContract(
     row: ShopSettingsRowLike,
@@ -392,6 +408,7 @@ export function toShopSettingsContract(
         },
         style: toShopStyleContract(row.theme),
         feedbackStyle: normalizeFeedbackStyle(row.feedbackStyle),
+        reportUrl: resolveReportUrl(),
     };
 }
 

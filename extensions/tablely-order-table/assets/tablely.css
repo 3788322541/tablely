@@ -534,11 +534,40 @@
     cursor: progress;
 }
 
+/* -------------------- 历史加购预填（M13 / Y15 / §15.7） -------------------- */
+
+/* 容器由 Liquid 仅在**登录客户**时渲染，且初始 `hidden`；JS 确认
+   「本商品确有历史记录」后才显出按钮。故这里必须显式让 `[hidden]` 生效。 */
+.tablely-history[hidden] {
+    display: none;
+}
+
+.tablely-history {
+    margin-bottom: 0.7em;
+}
+
+.tablely-history-btn {
+    font: inherit;
+    font-size: 0.9em;
+    font-weight: 500;
+    padding: 0.4em 0.9em;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--tablely-line-soft);
+    border-radius: var(--tablely-radius);
+    cursor: pointer;
+}
+
+.tablely-history-btn:hover {
+    background: var(--tablely-tint);
+}
+
 /* ------------------------------ 焦点可见（B14） ------------------------------ */
 
 .tablely-qty:focus-visible,
 .tablely-step:focus-visible,
 .tablely-add:focus-visible,
+.tablely-history-btn:focus-visible,
 .tablely-submit:focus-visible {
     /* M8：描边用品牌色（未设定 = currentColor，随主题自适应） */
     outline: 2px solid var(--tablely-brand);
