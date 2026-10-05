@@ -94,8 +94,13 @@ export { GATE_MODES, TIER_MODELS };
 
 /* ============================== 契约类型 ============================== */
 
-/** 档位（§五 `rows[].tiers`；B6 的 `defaultTiers` 由 M12 展开进各变体，Liquid 只认这里） */
-export type TierEntry = { qty: number; price: string };
+/**
+ * 档位（§五 `rows[].tiers`；B6 的 `defaultTiers` 由 M12 展开进各变体，Liquid 只认这里）。
+ *
+ * 两种模型（§2.2）二选一：`percent`（模型 A，百分比）或 `price`（模型 B，固定单价）。
+ * 同一档位**不同时**携带两者；`normalizeTiers` 已保证形态合法。
+ */
+export type TierEntry = { qty: number; price?: string; percent?: number };
 
 /** 批发价（§五 `rows[].wholesale`；B5 一个变体可挂多组，M10/M12 落值） */
 export type WholesaleEntry = { group: string; price: string };
@@ -249,6 +254,36 @@ export function pickColumnOverrides(source: unknown): Partial<ColumnFlags> {
     for (const key of COLUMN_KEYS) {
         const value = (source as Record<string, unknown>)[key];
         if (typeof value === "boolean") result[key] = value;
+    }
+    return result;
+}
+
+/**
+ * 档位数组归一化（M12 / §2.2）：只接受 `{qty, percent}` 或 `{qty, price}` 形态。
+ *
+ * - `qty` 必须是 ≥ 1 的整数（向下取整），否则丢弃该档；
+ * - `percent` 优先（模型 A）：`0 < percent ≤ 100` 的有限数；
+ * - 否则退 `price`（模型 B）：非空十进制字符串，**不在此处转数字**（金额全程字符串）；
+ * - 两者皆无的脏档位一律丢弃，绝不写进店面契约。
+ */
+export function normalizeTiers(source: unknown): TierEntry[] {
+    if (!Array.isArray(source)) return [];
+    const result: TierEntry[] = [];
+    for (const entry of source) {
+        if (!entry || typeof entry !== "object") continue;
+        const raw = entry as Record<string, unknown>;
+        const qty = Math.floor(Number(raw.qty));
+        if (!Number.isFinite(qty) || qty < 1) continue;
+        const percent = Number(raw.percent);
+        if (Number.isFinite(percent) && percent > 0 && percent <= 100) {
+            result.push({ qty, percent });
+            continue;
+        }
+        const price =
+            typeof raw.price === "string" && raw.price.trim() !== ""
+                ? raw.price.trim()
+                : null;
+        if (price) result.push({ qty, price });
     }
     return result;
 }

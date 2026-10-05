@@ -22,7 +22,8 @@
         "check-i18n": "tsx scripts/check-i18n.ts",
         "check-bundle": "tsx scripts/check-bundle.ts",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "test:function": "vitest run --root extensions/tablely-pricing"
     },
     "type": "module",
     "engines": {

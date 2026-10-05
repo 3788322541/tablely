@@ -1,0 +1,71 @@
+{
+    "payload": {
+        "export": "cart-lines-discounts-generate-run",
+        "target": "cart.lines.discounts.generate.run",
+        "input": {
+            "cart": {
+                "lines": [
+                    {
+                        "id": "gid://shopify/CartLine/0",
+                        "quantity": 10,
+                        "cost": {
+                            "amountPerQuantity": {
+                                "amount": "20.00",
+                                "currencyCode": "USD"
+                            },
+                            "subtotalAmount": {
+                                "amount": "200.00"
+                            }
+                        },
+                        "merchandise": {
+                            "id": "gid://shopify/ProductVariant/111",
+                            "product": {
+                                "metafield": {
+                                    "value": "{\"rows\":[{\"vid\":\"111\",\"tiers\":[{\"qty\":5,\"percent\":10},{\"qty\":10,\"percent\":20}],\"wholesale\":[]}]}"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "buyerIdentity": {
+                    "isAuthenticated": false,
+                    "customer": null
+                }
+            },
+            "discount": {
+                "discountClasses": [
+                    "PRODUCT"
+                ],
+                "metafield": {
+                    "value": "{\"mode\":\"tier\",\"enabled\":true,\"groupTags\":[\"tier1\"],\"mixGroups\":[]}"
+                }
+            }
+        },
+        "output": {
+            "operations": [
+                {
+                    "productDiscountsAdd": {
+                        "candidates": [
+                            {
+                                "message": "Tablely tier price",
+                                "targets": [
+                                    {
+                                        "cartLine": {
+                                            "id": "gid://shopify/CartLine/0"
+                                        }
+                                    }
+                                ],
+                                "value": {
+                                    "percentage": {
+                                        "value": 20
+                                    }
+                                }
+                            }
+                        ],
+                        "selectionStrategy": "ALL"
+                    }
+                }
+            ]
+        }
+    }
+}

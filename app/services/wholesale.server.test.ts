@@ -1,5 +1,5 @@
 /**
- * Wholesale 单测（M10）—— 门控配置 / 客户组 CRUD / 标签迁移 / 门控判定
+ * Wholesale 单测（M10 / M12）—— 门控配置 / 客户组 CRUD / 标签迁移 / 门控判定 / 档位校验
  *
  * 与 `tables.gating.test.ts` 同一取证方式：假 Prisma（`vi.hoisted` + `vi.mock`）验证
  * 「后端双保险」与「改名后批发价仍生效」这两条 M10 验收口径；并另对**真实 Liquid 文本**
@@ -11,6 +11,7 @@
  *   · 客户组：Free 拒写；名称 / 标签归一化校验；标签唯一；
  *   · **改标签 → 同事务迁移 `WholesalePrice.groupTag`**（M10 验收 ②）；
  *   · 删除 → 同事务删批发价行并返回影响条数；
+ *   · **档位校验（M12）**：`normalizeTierModel` 白名单回退 / `validateTierRows` 排序去重与四条错误路径；
  *   · Liquid 门控：`hide_table` 整表不渲染 / `hide_price` 不输出价格衍生（§2.8）。
  */
 import { readFileSync } from "node:fs";
@@ -56,8 +57,10 @@ import {
     listCustomerGroups,
     normalizeGateMode,
     normalizeTags,
+    normalizeTierModel,
     saveGateSettings,
     updateCustomerGroup,
+    validateTierRows,
 } from "./wholesale.server";
 import type { GraphqlAdmin } from "./metafield.server";
 
@@ -71,7 +74,7 @@ const pushMock = vi.mocked(pushShopSettingsMetafield);
 
 const dummyAdmin = { graphql: vi.fn() } as unknown as GraphqlAdmin;
 
-const expectKey = async (run: () => Promise<unknown>, key: string, field?: string | null) => {
+const expectKey = async (run: () => unknown | Promise<unknown>, key: string, field?: string | null) => {
     try {
         await run();
         throw new Error(`应当抛错 ${key}`);
@@ -502,5 +505,95 @@ describe("店面门控 Liquid（M10 验收 ①）", () => {
 
     it("清空 tly_min 让 data-tablely-order-min 与起订金额块一并消失（避免合计恒 0 永久禁用提交）", () => {
         expect(markup).toMatch(/if tly_price_hidden[\s\S]*?assign tly_min = ''/);
+    });
+});
+
+/* ============================ 档位校验（M12） ============================ */
+
+describe("validateTierRows / normalizeTierModel（M12 / §16.2）", () => {
+    it("模型归一化：非白名单退回 percent（不把脏值写进契约）", () => {
+        expect(normalizeTierModel("fixed")).toBe("fixed");
+        expect(normalizeTierModel("percent")).toBe("percent");
+        expect(normalizeTierModel("bogus")).toBe("percent");
+        expect(normalizeTierModel(null)).toBe("percent");
+    });
+
+    it("percent 模型：整行留空跳过、按 qty 升序、同 qty 后者覆盖", () => {
+        const rows = validateTierRows(
+            [
+                { qty: "", percent: "", price: "" },
+                { qty: "10", percent: "10" },
+                { qty: "5", percent: "5" },
+                { qty: "10", percent: "12" },
+            ],
+            "percent",
+        );
+        expect(rows).toEqual([
+            { qty: 5, percent: 5 },
+            { qty: 10, percent: 12 },
+        ]);
+    });
+
+    it("fixed 模型：价格串通过校验并按 qty 升序", () => {
+        const rows = validateTierRows(
+            [{ qty: "2", price: "95.00" }, { qty: "1", price: "99" }],
+            "fixed",
+        );
+        expect(rows).toEqual([
+            { qty: 1, price: "99" },
+            { qty: 2, price: "95.00" },
+        ]);
+    });
+
+    it("非法 qty（0 / 非整数）→ error.tierQtyInvalid", async () => {
+        await expectKey(
+            () => validateTierRows([{ qty: "0", percent: "5" }], "percent"),
+            "error.tierQtyInvalid",
+            "tierQty",
+        );
+        await expectKey(
+            () => validateTierRows([{ qty: "1.5", percent: "5" }], "percent"),
+            "error.tierQtyInvalid",
+            "tierQty",
+        );
+    });
+
+    it("percent 越界（0 / >100 / 非数字）→ error.tierPercentInvalid", async () => {
+        await expectKey(
+            () => validateTierRows([{ qty: "3", percent: "0" }], "percent"),
+            "error.tierPercentInvalid",
+            "tierPercent",
+        );
+        await expectKey(
+            () => validateTierRows([{ qty: "3", percent: "101" }], "percent"),
+            "error.tierPercentInvalid",
+            "tierPercent",
+        );
+    });
+
+    it("fixed 价格串越界（多小数位 / 超 8 位整数 / 非数字）→ error.tierPriceInvalid", async () => {
+        await expectKey(
+            () => validateTierRows([{ qty: "3", price: "9.999" }], "fixed"),
+            "error.tierPriceInvalid",
+            "tierPrice",
+        );
+        await expectKey(
+            () => validateTierRows([{ qty: "3", price: "123456789" }], "fixed"),
+            "error.tierPriceInvalid",
+            "tierPrice",
+        );
+        await expectKey(
+            () => validateTierRows([{ qty: "3", price: "abc" }], "fixed"),
+            "error.tierPriceInvalid",
+            "tierPrice",
+        );
+    });
+
+    it("档位 JSON 超上限 → error.tierTooLarge（不静默截断）", async () => {
+        const wide = Array.from({ length: 600 }, (_item, index) => ({
+            qty: String(index + 1),
+            price: "1.00",
+        }));
+        await expectKey(() => validateTierRows(wide, "fixed"), "error.tierTooLarge");
     });
 });

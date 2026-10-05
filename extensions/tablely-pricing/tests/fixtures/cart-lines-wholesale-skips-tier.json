@@ -1,0 +1,39 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 10,
+            "cost": {
+              "amountPerQuantity": { "amount": "20.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "200.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/111",
+              "product": {
+                "metafield": {
+                  "value": "{\"rows\":[{\"vid\":\"111\",\"tiers\":[{\"qty\":5,\"percent\":10}],\"wholesale\":[]}]}"
+                }
+              }
+            }
+          }
+        ],
+        "buyerIdentity": {
+          "isAuthenticated": true,
+          "customer": { "hasTags": [{ "hasTag": true, "tag": "tier1" }] }
+        }
+      },
+      "discount": {
+        "discountClasses": ["PRODUCT"],
+        "metafield": {
+          "value": "{\"mode\":\"tier\",\"enabled\":true,\"groupTags\":[\"tier1\"],\"mixGroups\":[]}"
+        }
+      }
+    },
+    "output": { "operations": [] }
+  }
+}

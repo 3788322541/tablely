@@ -1,0 +1,51 @@
+{
+  "payload": {
+    "export": "cart-lines-discounts-generate-run",
+    "target": "cart.lines.discounts.generate.run",
+    "input": {
+      "cart": {
+        "lines": [
+          {
+            "id": "gid://shopify/CartLine/0",
+            "quantity": 5,
+            "cost": {
+              "amountPerQuantity": { "amount": "25.00", "currencyCode": "USD" },
+              "subtotalAmount": { "amount": "125.00" }
+            },
+            "merchandise": {
+              "id": "gid://shopify/ProductVariant/333",
+              "product": {
+                "metafield": {
+                  "value": "{\"rows\":[{\"vid\":\"333\",\"tiers\":[{\"qty\":5,\"price\":\"20.00\"}],\"wholesale\":[]}]}"
+                }
+              }
+            }
+          }
+        ],
+        "buyerIdentity": { "isAuthenticated": false, "customer": null }
+      },
+      "discount": {
+        "discountClasses": ["PRODUCT"],
+        "metafield": {
+          "value": "{\"mode\":\"tier\",\"enabled\":true,\"groupTags\":[],\"mixGroups\":[]}"
+        }
+      }
+    },
+    "output": {
+      "operations": [
+        {
+          "productDiscountsAdd": {
+            "candidates": [
+              {
+                "message": "Tablely tier price",
+                "targets": [{ "cartLine": { "id": "gid://shopify/CartLine/0" } }],
+                "value": { "fixedAmount": { "amount": 25, "appliesToEachItem": false } }
+              }
+            ],
+            "selectionStrategy": "ALL"
+          }
+        }
+      ]
+    }
+  }
+}

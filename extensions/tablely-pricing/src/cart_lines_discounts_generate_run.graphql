@@ -1,0 +1,51 @@
+# 输入查询（§2.2 / M12）
+#
+# 三个 automatic discount（阶梯价 / 批发价 / Mix & Match）共用同一份 Function 与查询，
+# 靠 discount 节点上的 `config` metafield 的 `mode` 字段区分行为。
+#
+# $customerTags 来自 discount owner 上的 `variables` metafield（见 shopify.extension.toml）：
+#   {"customerTags":["tier1","tier2"]}
+# 声明为可空 —— 缺 metafield / 缺 key 时变量为 null，
+# `hasTags(tags:)` 参数自带默认值 `[]`，故安全降级为「无匹配标签」而非执行失败。
+query CartInput($customerTags: [String!]) {
+  cart {
+    lines {
+      id
+      quantity
+      cost {
+        amountPerQuantity {
+          amount
+          currencyCode
+        }
+        subtotalAmount {
+          amount
+        }
+      }
+      merchandise {
+        ... on ProductVariant {
+          id
+          product {
+            metafield(namespace: "tablely", key: "table") {
+              value
+            }
+          }
+        }
+      }
+    }
+    buyerIdentity {
+      isAuthenticated
+      customer {
+        hasTags(tags: $customerTags) {
+          hasTag
+          tag
+        }
+      }
+    }
+  }
+  discount {
+    discountClasses
+    metafield(namespace: "$app:tablely", key: "config") {
+      value
+    }
+  }
+}

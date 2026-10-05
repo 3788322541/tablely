@@ -24,11 +24,13 @@ import {
     deleteProductTableMetafield,
     getShopInfo,
     normalizeLayout,
+    normalizeTiers,
     pickColumnOverrides,
     syncProductTableMetafield,
     type GraphqlAdmin,
     type ProductOptionLike,
     type TableContractRow,
+    type WholesaleEntry,
 } from "./metafield.server";
 
 /* ------------------------------- 错误 ------------------------------- */
@@ -536,14 +538,29 @@ export async function pushProductTableMetafield(input: {
             where: { shop: input.shop, productId: input.productId },
         }),
     ]);
-    const ruleValues: (VariantRuleValues & { variantId: string })[] = ruleRows.map(
-        (rule) => ({
-            variantId: rule.variantId,
-            min: rule.min,
-            max: rule.max,
-            step: rule.step,
-        }),
-    );
+    // B5 批发价：本商品各变体的全部组价（变体 id 为 GID，与 DB 存储一致）
+    const wholesaleRows = await prisma.wholesalePrice.findMany({
+        where: {
+            shop: input.shop,
+            variantId: { in: variants.map((variant) => variant.id) },
+        },
+    });
+    const ruleValues: (VariantRuleValues & {
+        variantId: string;
+        tiers: unknown;
+    })[] = ruleRows.map((rule) => ({
+        variantId: rule.variantId,
+        min: rule.min,
+        max: rule.max,
+        step: rule.step,
+        tiers: rule.tiers,
+    }));
+    const wholesaleByVariant = new Map<string, WholesaleEntry[]>();
+    for (const row of wholesaleRows) {
+        const list = wholesaleByVariant.get(row.variantId) ?? [];
+        list.push({ group: row.groupTag, price: row.price.toFixed(2) });
+        wholesaleByVariant.set(row.variantId, list);
+    }
 
     try {
         await syncProductTableMetafield(
@@ -557,7 +574,12 @@ export async function pushProductTableMetafield(input: {
                 orderMinAmount: table.orderMinAmount
                     ? table.orderMinAmount.toFixed(2)
                     : null,
-                rows: buildContractRows(variants, ruleValues),
+                rows: buildContractRows(
+                    variants,
+                    ruleValues,
+                    table.defaultTiers,
+                    wholesaleByVariant,
+                ),
                 // M6：恰好 2 个 option 轴才生成矩阵；否则 null，Liquid 自动降级为表格（§十三 C9）
                 matrix: buildMatrix(
                     options,
@@ -577,11 +599,16 @@ export async function pushProductTableMetafield(input: {
 /** 变体（Admin API 权威）+ 规则 → metafield 的 `rows[]`（不含价格 / 库存） */
 function buildContractRows(
     variants: { id: string; sku: string | null; title: string }[],
-    rules: (VariantRuleValues & { variantId: string })[],
+    rules: (VariantRuleValues & { variantId: string; tiers: unknown })[],
+    defaultTiers: unknown,
+    wholesaleByVariant: Map<string, WholesaleEntry[]>,
 ): TableContractRow[] {
     const byVariant = new Map(rules.map((rule) => [rule.variantId, rule] as const));
+    // B6：商品级默认档位，变体未覆写时继承（§2.2）
+    const fallbackTiers = normalizeTiers(defaultTiers);
     return variants.map((variant) => {
         const rule = byVariant.get(variant.id);
+        const ownTiers = normalizeTiers(rule?.tiers);
         return {
             vid: gidToNumericId(variant.id),
             sku: variant.sku,
@@ -589,10 +616,10 @@ function buildContractRows(
             min: rule?.min ?? 1,
             max: rule?.max ?? null,
             step: rule?.step ?? 1,
-            // 档位（B6 展开）属 M12、批发价（B5 多组）属 M10/M12；
-            // M4 只保证「每行字段结构一致」（§五），故恒为空数组。
-            tiers: [],
-            wholesale: [],
+            // M12：变体自带档位优先，否则继承商品级默认档位，一并展开给 Liquid / Function
+            tiers: ownTiers.length ? ownTiers : fallbackTiers,
+            // M10/M12：该变体的全部批发价（按客户组标签）；店面只展示，改价由 Function 执行
+            wholesale: wholesaleByVariant.get(variant.id) ?? [],
         };
     });
 }
