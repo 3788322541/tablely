@@ -69,10 +69,12 @@ git reset --hard origin/main
 SHA="$(git rev-parse --short HEAD)"
 TAG="${IMAGE_REPO}:${SHA}"
 export TABLELY_IMAGE="$TAG"
+# 供 docker-compose.yml 的 build.args 插值，把短 SHA 烘焙进镜像（/healthz 与日志显示它）
+export APP_VERSION="$SHA"
 log "目标版本 ${SHA}（镜像 ${TAG}）"
 
-log "构建镜像（注入版本号 ${SHA}）"
-docker compose -f "$COMPOSE_FILE" build --build-arg "APP_VERSION=$SHA" app
+log "构建镜像（注入版本号 ${SHA}，见 docker-compose.yml 的 build.args）"
+docker compose -f "$COMPOSE_FILE" build app
 
 log "启动容器（迁移在容器启动命令内自动执行）"
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
@@ -90,11 +92,16 @@ if ! wait_healthy "$HEALTH_URL"; then
 fi
 
 # 只有部署成功才推进历史（history 第 1 行 = 当前 tag，供 rollback.sh 使用）
+# ⚠️ 首次部署时 history 不存在 → `sed` 失败；在 `set -e` + `pipefail` 下整个管道非零会
+#    **直接终止脚本**（实测导致：history 未写、无回滚点、edge 同步与镜像清理都没跑）。
+#    故此处必须 `|| true`，并把条件打印写成 if。
 {
     printf '%s\n' "$TAG"
-    [ -n "$PREVIOUS_TAG" ] && printf '%s\n' "$PREVIOUS_TAG"
-    sed -n '2,$p' "$HISTORY_FILE"
-} 2>/dev/null | awk 'NF && !seen[$0]++' > "${HISTORY_FILE}.tmp"
+    if [ -n "$PREVIOUS_TAG" ]; then
+        printf '%s\n' "$PREVIOUS_TAG"
+    fi
+    sed -n '2,$p' "$HISTORY_FILE" 2>/dev/null || true
+} | awk 'NF && !seen[$0]++' > "${HISTORY_FILE}.tmp"
 mv "${HISTORY_FILE}.tmp" "$HISTORY_FILE"
 
 # 同步 edge 片段：内容未变则不 reload（减少共享 Caddy 的扰动面）
