@@ -77,7 +77,8 @@
     "overrides": {
         "p-map": "^4.0.0",
         "qs": "^6.16.0",
-        "deepmerge-ts": "^8.0.2"
+        "deepmerge-ts": "^8.0.2",
+        "source-map-js": "^1.2.2"
     },
     "resolutions": {
         "qs": "^6.16.0"

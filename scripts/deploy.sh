@@ -71,8 +71,8 @@ TAG="${IMAGE_REPO}:${SHA}"
 export TABLELY_IMAGE="$TAG"
 log "目标版本 ${SHA}（镜像 ${TAG}）"
 
-log "构建镜像"
-docker compose -f "$COMPOSE_FILE" build app
+log "构建镜像（注入版本号 ${SHA}）"
+docker compose -f "$COMPOSE_FILE" build --build-arg "APP_VERSION=$SHA" app
 
 log "启动容器（迁移在容器启动命令内自动执行）"
 docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
