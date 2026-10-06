@@ -22,8 +22,11 @@ import { createHmac } from "node:crypto";
 
 const hoisted = vi.hoisted(() => {
     const SECRET = "shpss_compliance_secret";
-    // 必须在 shopify.server 被 import 前设置（SDK 构造时就读取密钥）
+    // 必须在 shopify.server 被 import 前设置（SDK 构造时就读取密钥与 appUrl）。
+    // 本地有 .env 兜底，CI 没有 —— 所以这些值一律在测试里显式给全，避免环境差异。
     process.env.SHOPIFY_API_SECRET = SECRET;
+    process.env.SHOPIFY_API_KEY ??= "test-api-key";
+    process.env.SHOPIFY_APP_URL ??= "https://tablely.zhenjunit.com";
 
     const seen = new Set<string>();
     return {
