@@ -1,12 +1,14 @@
 name: Deploy
 
-# ⚠️ CD 的**脚本**已就绪（scripts/deploy.sh + scripts/rollback.sh），但**启用自动部署**
-# 属于线上基建动作，需单独拍板：打开下面的 push 触发 + 在仓库 secrets 里配好
-# SSH_HOST / SSH_USER / SSH_KEY（服务器 env 只存服务器，不进仓库）。
-# 在那之前保留 workflow_dispatch 手动触发，避免每次 push main 都去连生产服务器。
+# CD 已启用（2026-10-06，用户拍板）：合并到 main 即自动部署。
+# 前置已就绪：DNS A 记录 + 服务器初始化（/srv/tablely）+ secrets SSH_HOST / SSH_USER / SSH_KEY
+# （2026-10-06 写入，复用共享部署密钥；服务器 env 只存服务器，不进仓库）。
+# 具体步骤收敛在 scripts/deploy.sh（含健康门禁 + 失败自动回滚）；如需手工重跑用 workflow_dispatch。
+# ⚠️ 本 workflow 只部署、不跑校验：门禁在 push / PR 的 ci.yml（verify + function）里，
+#    因此**不要**开启「绕过分支保护直推 main」——那会绕过校验直接上线。
 on:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
