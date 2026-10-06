@@ -21,7 +21,14 @@ services:
       options: { max-size: "10m", max-file: "3" }
 
   app:
-    build: .
+    build:
+      context: .
+      # 镜像版本号：`/healthz` 与结构化日志用它标明「现在跑的是哪个提交」（回滚 / 排查必需）。
+      # 由 `scripts/deploy.sh` 导出 APP_VERSION=<短SHA> 注入；未注入时为 0.0.0-dev。
+      # ⚠️ 写成声明式而不用 CLI 的 `--build-arg`：实测在服务器上的 compose 里该 flag
+      #    不生效（镜像里烘焙的仍是默认值），声明式写法由 compose 亲自插值，更可靠。
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
     # 镜像名由 CD 注入（`scripts/deploy.sh` 传 `TABLELY_IMAGE=tablely-app:<短SHA>`，§21.4）：
     # 有固定 tag 才能「回滚 = 切回上一 tag + docker compose up -d」。手工部署时用默认值。
     image: ${TABLELY_IMAGE:-tablely-app:latest}
