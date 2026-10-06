@@ -19,6 +19,12 @@ RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
 
+# 镜像版本号：`/healthz` 与结构化日志用它标明「现在跑的是哪个提交」（回滚 / 排查必需）。
+# 由 scripts/deploy.sh 以 `--build-arg APP_VERSION=<短SHA>` 注入；未注入时为 0.0.0-dev。
+# ⚠️ 不要用 compose 的 env_file 覆盖它（.env 里的值会盖过镜像 ENV）。
+ARG APP_VERSION=0.0.0-dev
+ENV APP_VERSION=$APP_VERSION
+
 COPY package.json package-lock.json* ./
 COPY extensions ./extensions
 # prisma CLI 在生产依赖中，运行时执行 migrate deploy
