@@ -187,6 +187,12 @@ export type ShopSettingsContract = {
      * 空串 = 应用地址未配置，店面据此**跳过上报**（绝不因此影响加购）。
      */
     reportUrl: string;
+    /**
+     * M14：App Block 渲染检测地址（`${SHOPIFY_APP_URL}/api/track`）。
+     * 店面增强层初始化时 fire-and-forget 打一次，应用据此写 `blockAddedAt`（Y1 激活漏斗）。
+     * 空串 = 应用地址未配置，店面**跳过**（绝不影响渲染）。
+     */
+    trackUrl: string;
 };
 
 /** 序列化 Shop 级契约所需的 DB 行（结构性类型，避免把 Prisma 拖进单测） */
@@ -383,6 +389,16 @@ export function resolveReportUrl(): string {
     return base ? `${base}/api/addtocart` : "";
 }
 
+/**
+ * M14：App Block 渲染检测上报地址（Y1 激活漏斗 `blockAddedAt`）。
+ *
+ * 与 `resolveReportUrl` 同法：未配置 `SHOPIFY_APP_URL` 时返回空串，店面侧跳过。
+ */
+export function resolveTrackUrl(): string {
+    const base = (process.env.SHOPIFY_APP_URL ?? "").trim().replace(/\/+$/, "");
+    return base ? `${base}/api/track` : "";
+}
+
 /** DB 行 → Shop 级契约（**唯一生成处**；Design 页保存与 afterAuth 播种共用） */
 export function toShopSettingsContract(
     row: ShopSettingsRowLike,
@@ -409,6 +425,7 @@ export function toShopSettingsContract(
         style: toShopStyleContract(row.theme),
         feedbackStyle: normalizeFeedbackStyle(row.feedbackStyle),
         reportUrl: resolveReportUrl(),
+        trackUrl: resolveTrackUrl(),
     };
 }
 

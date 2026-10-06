@@ -18,6 +18,7 @@ import {
     normalizeRadius,
     pickColumnOverrides,
     resolveReportUrl,
+    resolveTrackUrl,
     sanitizeSelector,
     toShopSettingsContract,
     toShopStyleContract,
@@ -145,6 +146,22 @@ describe("resolveReportUrl", () => {
     });
 });
 
+/* ======================== App Block 渲染检测地址（M14 / Y1） ======================== */
+
+describe("resolveTrackUrl", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("未配置 SHOPIFY_APP_URL → 空串（店面据此跳过，绝不影响渲染）", () => {
+        vi.stubEnv("SHOPIFY_APP_URL", "");
+        expect(resolveTrackUrl()).toBe("");
+    });
+
+    it("已配置 → <app>/api/track，并去掉尾部斜杠", () => {
+        vi.stubEnv("SHOPIFY_APP_URL", "https://tablely.zhenjunit.com/");
+        expect(resolveTrackUrl()).toBe("https://tablely.zhenjunit.com/api/track");
+    });
+});
+
 /* ======================== Shop 级契约序列化 ======================== */
 
 describe("toShopSettingsContract", () => {
@@ -169,6 +186,7 @@ describe("toShopSettingsContract", () => {
             },
             feedbackStyle: "inline",
             reportUrl: "",
+            trackUrl: "",
         });
     });
 

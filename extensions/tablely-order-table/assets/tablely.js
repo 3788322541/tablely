@@ -50,6 +50,8 @@
   var cartUrl = (config && config.cartUrl) || '/cart';
   /* M13 加购上报（A3）：地址 / 店铺 / 商品 / 客户，缺一即跳过上报（绝不影响加购） */
   var reportUrl = (config && config.reportUrl) || '';
+  /* M14 App Block 渲染检测（Y1）：增强层初始化时打一次，写 blockAddedAt */
+  var trackUrl = (config && config.trackUrl) || '';
   var shopDomain = (config && config.shop) || '';
   var productId = (config && config.productId) || '';
   var customerId = (config && config.customerId) || '';
@@ -429,17 +431,37 @@
     }
   }
 
+  /**
+   * 一次性「App Block 已渲染」上报（M14 / Y1 激活漏斗）。
+   *
+   * 脚本本身由 `table-runtime.liquid` 在**确认渲染**后才引入，所以增强层初始化
+   * 等价于「App Block 已添加到主题并渲染」。fire-and-forget，失败静默，
+   * 绝不因统计失败干扰店面（§十二 验收 26）。
+   */
+  var blockTracked = false;
+  function reportBlockRendered() {
+    if (blockTracked || !trackUrl || !shopDomain) return;
+    blockTracked = true;
+    sendTo(trackUrl, JSON.stringify({ shop: shopDomain }));
+  }
+
   function sendReport(body) {
+    sendTo(reportUrl, body);
+  }
+
+  /** 通用 fire-and-forget 上报：优先 `sendBeacon`，兜底 `fetch(keepalive)`，异常一律吞掉 */
+  function sendTo(url, body) {
+    if (!url) return;
     try {
       if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
         var blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
-        if (navigator.sendBeacon(reportUrl, blob)) return;
+        if (navigator.sendBeacon(url, blob)) return;
       }
     } catch (error) {
       /* 落到 fetch 兜底 */
     }
     try {
-      fetch(reportUrl, {
+      fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: body,
@@ -776,6 +798,7 @@
   }
 
   function init() {
+    reportBlockRendered();
     var forms = document.querySelectorAll(FORM_SELECTOR);
     for (var i = 0; i < forms.length; i++) enhance(forms[i]);
   }
