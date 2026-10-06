@@ -22,6 +22,9 @@ services:
 
   app:
     build: .
+    # 镜像名由 CD 注入（`scripts/deploy.sh` 传 `TABLELY_IMAGE=tablely-app:<短SHA>`，§21.4）：
+    # 有固定 tag 才能「回滚 = 切回上一 tag + docker compose up -d」。手工部署时用默认值。
+    image: ${TABLELY_IMAGE:-tablely-app:latest}
     restart: unless-stopped
     env_file: .env
     expose:

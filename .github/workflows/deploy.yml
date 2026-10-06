@@ -1,9 +1,9 @@
 name: Deploy
 
-# ⚠️ CD 尚未启用（§十一 M15 才做「CD 部署脚本与迁移自动执行、回滚演练」）。
-# 现在只保留手动触发，避免每次 push main 都去连一台还没建好 /srv/tablely 的服务器。
-# M15 时把下面的 push: branches [main] 打开，并在仓库 secrets 里配好
+# ⚠️ CD 的**脚本**已就绪（scripts/deploy.sh + scripts/rollback.sh），但**启用自动部署**
+# 属于线上基建动作，需单独拍板：打开下面的 push 触发 + 在仓库 secrets 里配好
 # SSH_HOST / SSH_USER / SSH_KEY（服务器 env 只存服务器，不进仓库）。
+# 在那之前保留 workflow_dispatch 手动触发，避免每次 push main 都去连生产服务器。
 on:
   # push:
   #   branches: [main]
@@ -30,16 +30,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
+          # 具体步骤收敛在 scripts/deploy.sh（含健康门禁与失败自动回滚），
+          # 演练与线上跑的是同一份脚本，避免两边漂移。
           script: |
             set -e
             cd /srv/tablely
-            git fetch --all && git reset --hard origin/main
-            # 1) 应用本体（postgres + app）。app 靠 edge 网络里的固定别名对外暴露，
-            #    自己不再起 Caddy、不占用宿主机的 80/443。
-            docker compose up -d --build --remove-orphans
-            # 2) 同步本站点的边缘路由片段，并热重载共享 Caddy（edge 层在 /srv/edge，不在本仓库里，
-            #    因此上面的 git reset --hard 不会覆盖到它）。
-            #    配置非法时 reload 会失败并保留旧配置继续服务。
-            install -m 644 edge/tablely.caddy /srv/edge/sites/tablely.caddy
-            docker exec edge-caddy caddy reload --config /etc/caddy/Caddyfile
-            docker image prune -f
+            bash scripts/deploy.sh
