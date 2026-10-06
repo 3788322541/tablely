@@ -18,6 +18,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 import { hasFeature, isProLayout, type Plan } from "../plan";
 import { MAX_TABLE_ROWS } from "../perf-limits";
+import { logStructured } from "./monitor.server";
 import {
     buildMatrix,
     buildProductTableValue,
@@ -69,6 +70,29 @@ export async function resolvePlan(shop: string): Promise<Plan> {
         select: { plan: true },
     });
     return row?.plan === "pro" ? "pro" : "free";
+}
+
+/* --------------------------- 激活埋点（Y1 / M14） --------------------------- */
+
+/**
+ * 首个订购表启用时间戳（`ShopSettings.firstProductAt`，§22.3）。
+ *
+ * 只在「该店尚未写入」时落值（`updateMany where { shop, firstProductAt: null }`），
+ * **二次触发不覆盖原值**（§十二 验收 26）。埋点与主流程解耦：**写失败只记日志、不抛出**，
+ * 绝不阻塞保存。
+ */
+export async function markFirstProductEnabled(shop: string): Promise<void> {
+    try {
+        await prisma.shopSettings.updateMany({
+            where: { shop, firstProductAt: null },
+            data: { firstProductAt: new Date() },
+        });
+    } catch (error) {
+        logStructured("warn", "tables.first_product_marker_failed", {
+            shop,
+            message: error instanceof Error ? error.message : String(error),
+        });
+    }
 }
 
 /* --------------------------- 降级只读（§1.6 / §19） --------------------------- */
@@ -513,6 +537,9 @@ export async function saveProductTable(
         shop: input.shop,
         productId: input.productId,
     });
+
+    // Y1：保存为「启用」即视为首个订购表启用（仅首次落值，之后不覆盖）
+    if (input.enabled) await markFirstProductEnabled(input.shop);
 }
 
 /**
@@ -673,6 +700,9 @@ export async function addProductTables(input: {
                 ...(columns ? { columns } : {}),
             })),
         });
+
+        // Y1：批量新增的商品一律「启用」→ 记录首个启用时间（仅首次落值）
+        await markFirstProductEnabled(input.shop);
     }
 
     return toCreate.length;
@@ -703,6 +733,9 @@ export async function setProductTableEnabled(input: {
         where: { shop_productId: { shop: input.shop, productId: input.productId } },
         data: { enabled: input.enabled },
     });
+
+    // Y1：切换为启用即视为首个订购表启用（仅首次落值）
+    if (input.enabled) await markFirstProductEnabled(input.shop);
 }
 
 /** 删除某商品的订购表配置（级联删规则）并清理 metafield */
