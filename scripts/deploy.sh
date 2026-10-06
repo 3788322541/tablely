@@ -7,6 +7,8 @@
 # 避免这些步骤散落在 workflow 的 shell 片段里、演练时对不上。
 #
 # 做四件事（顺序即 §21.4 的顺序）：
+#   ⓪ 先把自身复制到 /tmp 再 exec（见下方「自替换」说明）：① 会覆盖本脚本文件，
+#      而 bash 是按文件偏移继续读脚本的，读到被替换的内容就会静默中断；
 #   ① `git reset --hard origin/main` 取到目标提交，并据此得到**镜像 tag = 短 SHA**；
 #   ② `docker compose build/up`（`tablely-app:<sha>`，compose 里的 `image:` 由
 #      `TABLELY_IMAGE` 注入）—— **迁移在容器启动命令内自动执行**（`prisma migrate deploy`）；
@@ -37,6 +39,23 @@ HISTORY_FILE="${STATE_DIR}/history"
 
 log() { printf '[deploy] %s\n' "$*"; }
 fail() { printf '[deploy][error] %s\n' "$*" >&2; return 1; }
+
+# 「自替换」陷阱：本脚本就在仓库内，而它自己会 `git reset --hard origin/main` 覆盖
+# `scripts/deploy.sh`。bash 是**按文件偏移增量读取**脚本的，文件在执行途中被换掉后，
+# 它会接着按旧偏移读新内容 → 在任意位置**静默中断**（无报错、退出码 2）。
+# 实测：`/healthz` 已通过、`.deploy/history.tmp` 已写出，但 `mv` 没跑、`history` 从未生成；
+# 同一份脚本复制到 /tmp 再跑则退出码 0、后续步骤（写 history / 同步 edge / 清理镜像）全部执行。
+# 故先把自身复制到 /tmp 再 `exec`，让整轮部署读的是不会被 commit 改动的副本。
+if [ "${TABLELY_DEPLOY_REEXEC:-0}" != "1" ]; then
+    SELF_COPY="$(mktemp -t tablely-deploy.XXXXXX)"
+    cp "${BASH_SOURCE[0]}" "$SELF_COPY"
+    export TABLELY_DEPLOY_REEXEC=1
+    export TABLELY_DEPLOY_SELF_COPY="$SELF_COPY"
+    exec bash "$SELF_COPY" "$@"
+fi
+if [ -n "${TABLELY_DEPLOY_SELF_COPY:-}" ]; then
+    trap 'rm -f "$TABLELY_DEPLOY_SELF_COPY"' EXIT
+fi
 
 # 探测 /healthz：连续 HEALTH_RETRIES 次成功才返回 0（§21.5 可用性层同一入口）
 wait_healthy() {
@@ -92,9 +111,8 @@ if ! wait_healthy "$HEALTH_URL"; then
 fi
 
 # 只有部署成功才推进历史（history 第 1 行 = 当前 tag，供 rollback.sh 使用）
-# ⚠️ 首次部署时 history 不存在 → `sed` 失败；在 `set -e` + `pipefail` 下整个管道非零会
-#    **直接终止脚本**（实测导致：history 未写、无回滚点、edge 同步与镜像清理都没跑）。
-#    故此处必须 `|| true`，并把条件打印写成 if。
+# ⚠️ 首次部署时 history 不存在 → `sed` 以**退出码 2** 失败；`set -e` + `pipefail` 下整条
+#    管道非零会直接终止脚本（`2>/dev/null` 只吞报错、不改退出码），故必须 `|| true`。
 {
     printf '%s\n' "$TAG"
     if [ -n "$PREVIOUS_TAG" ]; then
