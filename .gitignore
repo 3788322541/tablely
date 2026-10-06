@@ -17,6 +17,9 @@ database.sqlite
 .env.*
 # 模板必须入库（.env.* 会连带忽略它）
 !.env.example
+# 探针告警凭据（服务器 crontab source 用，含飞书 Webhook 与签名 Secret）
+# ⚠️ `.env.*` 匹配不到 `.alert.env`，必须单独写一行，否则会被误提交
+.alert.env
 
 
 
