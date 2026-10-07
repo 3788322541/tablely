@@ -227,10 +227,21 @@ describe("checkDiscountIntegrity（§21.5 业务完整性层 / §2.2.2）", () =
         expect(issues[0]).toMatchObject({ code: "discount_active_on_free", severity: "P2" });
     });
 
-    it("尚无折扣状态记录 → P2（不误报 P1）", () => {
+    it("Pro 店尚无折扣状态记录 → P2（不误报 P1）", () => {
         const issues = checkDiscountIntegrity(proInput({ state: null }));
         expect(issues).toHaveLength(1);
         expect(issues[0]).toMatchObject({ code: "discount_state_missing", severity: "P2" });
+    });
+
+    it("Free 店尚无折扣状态记录 → 无问题（从未 Pro 的店按设计不创建折扣）", () => {
+        expect(
+            checkDiscountIntegrity({
+                shop: "a.myshopify.com",
+                plan: "free",
+                state: null,
+                liveDiscounts: [],
+            }),
+        ).toEqual([]);
     });
 });
 
