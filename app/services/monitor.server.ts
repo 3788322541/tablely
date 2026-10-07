@@ -200,12 +200,17 @@ export function checkDiscountIntegrity(input: DiscountIntegrityInput): Integrity
     const issues: IntegrityIssue[] = [];
 
     if (!state) {
-        issues.push({
-            shop,
-            code: "discount_state_missing",
-            severity: "P2",
-            detail: "尚无折扣状态记录（未创建或从未同步）",
-        });
+        // Free 店**按设计**不会创建折扣（3 个 discount 只在 Pro 功能被保存时才建，
+        // 见 `ensureDiscountsForShop` 的调用点），因此「无记录」属预期状态，不算问题。
+        // 只有 Pro 店缺记录才说明折扣链路异常（§2.2.2）。
+        if (plan === "pro") {
+            issues.push({
+                shop,
+                code: "discount_state_missing",
+                severity: "P2",
+                detail: "尚无折扣状态记录（未创建或从未同步）",
+            });
+        }
         return issues;
     }
 
