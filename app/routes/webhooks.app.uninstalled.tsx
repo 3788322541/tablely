@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateWebhookResilient } from "../services/webhook-auth.server";
 import { createWebhookOnce } from "../services/security.server";
 import { logStructured } from "../services/monitor.server";
 import { cleanupShopData } from "../services/uninstall.server";
@@ -21,7 +21,7 @@ import { cleanupShopData } from "../services/uninstall.server";
 const once = createWebhookOnce();
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, topic, webhookId, admin } = await authenticate.webhook(request);
+  const { shop, topic, webhookId, admin } = await authenticateWebhookResilient(request);
 
   logStructured("info", "webhooks.app_uninstalled", { shop, topic: String(topic) });
 
