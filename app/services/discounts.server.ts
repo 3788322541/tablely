@@ -364,8 +364,12 @@ async function createDiscount(
     admin: GraphqlAdmin,
     input: Record<string, unknown>,
 ): Promise<string> {
+    // 2026-07 起 DiscountAutomaticAppInput.startsAt 创建时必填（缺省「立即开始」不再被接受）。
+    // 只在创建时补当前时间：更新路径不带该字段，避免每次同步把开始时间刷新成今天。
     const res = await admin.graphql(CREATE_MUTATION, {
-        variables: { automaticAppDiscount: input },
+        variables: {
+            automaticAppDiscount: { ...input, startsAt: new Date().toISOString() },
+        },
     });
     const json = (await res.json()) as {
         errors?: { message: string }[];
