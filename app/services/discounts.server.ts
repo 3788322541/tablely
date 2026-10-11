@@ -37,8 +37,15 @@ import { gidToNumericId, resolvePlan } from "./tables.server";
 
 /* ================================ 常量 ================================ */
 
-/** Function 的 targeting apiType（与 `shopify.extension.toml` 一致） */
-export const DISCOUNT_API_TYPE = "cart.lines.discounts.generate.run";
+/**
+ * 折扣 Function 的 targeting target（真源在 `shopify.extension.toml`：
+ * `cart.lines.discounts.generate.run`），仅文档引用，代码里不使用该字符串。
+ *
+ * ⚠️ 不要拿 target 字符串去过滤 `shopifyFunctions(apiType:)`：2026-07 API 实测该参数按
+ * **粗分类**索引（值为 `"discount"`），按精确 target 过滤返回空，会让
+ * `getPricingFunctionHandle` 误报「未部署 Function」。改为全量拉取后按 handle 精确匹配。
+ */
+
 
 /** 扩展 handle（`shopify.extension.toml` 的 `handle`） */
 export const PRICING_FUNCTION_HANDLE = "tablely-pricing";
@@ -58,16 +65,18 @@ const DISCOUNT_DEFS: {
     mode: PricingMode;
     title: string;
 }[] = [
-    { slot: "tierDiscountId", mode: "tier", title: "Tablely tier pricing" },
-    { slot: "wholeDiscountId", mode: "wholesale", title: "Tablely wholesale pricing" },
-    { slot: "mixMatchDiscountId", mode: "mixmatch", title: "Tablely Mix & Match" },
-];
+        { slot: "tierDiscountId", mode: "tier", title: "Tablely tier pricing" },
+        { slot: "wholeDiscountId", mode: "wholesale", title: "Tablely wholesale pricing" },
+        { slot: "mixMatchDiscountId", mode: "mixmatch", title: "Tablely Mix & Match" },
+    ];
 
 /* ============================== GraphQL ============================== */
 
+// 不传 apiType 过滤：该参数 2026-07 按粗分类（"discount"）索引，按精确 target
+// 过滤会漏掉本应用的 function；本店 function 数量很少，改为全量拉取后按 handle 匹配。
 const FUNCTIONS_QUERY = `#graphql
-  query TablelyPricingFunctions($apiType: String!) {
-    shopifyFunctions(apiType: $apiType, first: 50) {
+  query TablelyPricingFunctions {
+    shopifyFunctions(first: 50) {
       nodes {
         handle
         title
@@ -148,15 +157,13 @@ function throwOnUserErrors(
 /**
  * 定位本应用的折扣 Function handle。
  *
- * 部署后 `shopifyFunctions(apiType:)` 会返回本应用拥有的该 apiType function；
- * 取不到（未部署 / apiType 拼错）时**必须显式报错**，否则会创建出「不生效」的折扣。
+ * 全量拉取本店 function 后按 handle 精确匹配（不过滤 apiType，见 FUNCTIONS_QUERY 注释）；
+ * 取不到（未部署 / handle 拼错）时**必须显式报错**，否则会创建出「不生效」的折扣。
  */
 export async function getPricingFunctionHandle(
     admin: GraphqlAdmin,
 ): Promise<string> {
-    const res = await admin.graphql(FUNCTIONS_QUERY, {
-        variables: { apiType: DISCOUNT_API_TYPE },
-    });
+    const res = await admin.graphql(FUNCTIONS_QUERY);
     const json = (await res.json()) as {
         errors?: { message: string }[];
         data?: { shopifyFunctions?: { nodes?: { handle?: string; title?: string }[] } };
@@ -531,10 +538,10 @@ export async function auditDiscounts(input: {
 
     const ids = state
         ? [
-              state.tierDiscountId,
-              state.wholeDiscountId,
-              state.mixMatchDiscountId,
-          ].filter((id): id is string => Boolean(id))
+            state.tierDiscountId,
+            state.wholeDiscountId,
+            state.mixMatchDiscountId,
+        ].filter((id): id is string => Boolean(id))
         : [];
 
     const liveDiscounts: DiscountRef[] = [];
