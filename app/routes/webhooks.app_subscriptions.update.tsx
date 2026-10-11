@@ -1,8 +1,9 @@
 import type { ActionFunctionArgs } from "react-router";
-import { authenticate, unauthenticated } from "../shopify.server";
+import { authenticateWebhookResilient } from "../services/webhook-auth.server";
 import { createWebhookOnce } from "../services/security.server";
 import { applySubscriptionWebhook } from "../services/billing.server";
 import { logStructured } from "../services/monitor.server";
+import { unauthenticated } from "../shopify.server";
 import type { GraphqlAdmin } from "../services/metafield.server";
 
 /**
@@ -21,7 +22,7 @@ import type { GraphqlAdmin } from "../services/metafield.server";
 const once = createWebhookOnce();
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, topic, payload, webhookId } = await authenticate.webhook(request);
+  const { shop, topic, payload, webhookId } = await authenticateWebhookResilient(request);
 
   await once(webhookId, { topic: String(topic), shop }, async () => {
     let admin: GraphqlAdmin | null = null;

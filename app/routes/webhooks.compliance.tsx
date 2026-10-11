@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticateWebhookResilient } from "../services/webhook-auth.server";
 import { createWebhookOnce } from "../services/security.server";
 import { logStructured } from "../services/monitor.server";
 import { cleanupShopData } from "../services/uninstall.server";
@@ -30,7 +30,7 @@ import { nullifyQuotesForCustomer } from "../services/quotes.server";
 const once = createWebhookOnce();
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { topic, shop, webhookId, admin, payload } = await authenticate.webhook(request);
+  const { topic, shop, webhookId, admin, payload } = await authenticateWebhookResilient(request);
 
   // 注意：authenticate.webhook 把 HTTP 头里的主题名归一化成了大写枚举，
   // shop/redact 到这里已是 "SHOP_REDACT"，不能按原始小写斜杠形式比较。
