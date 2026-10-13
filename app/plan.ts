@@ -52,6 +52,30 @@ export function isPlanKey(value: string): value is PlanKey {
 /** 试用天数（方案 §七：7 天） */
 export const TRIAL_DAYS = 7;
 
+/** Shopify 订阅周期（AppRecurringPricing.interval）。 */
+export type BillingInterval = "EVERY_30_DAYS" | "ANNUAL";
+
+/**
+ * 商家是否仍享有 Pro 权益（App Store 审核 1.2.3 应用内降级）。
+ *
+ * appSubscriptionCancel(prorate:false) 后订阅立即变 CANCELLED，但访问权
+ * 保留到 currentPeriodEnd（Shopify 在周期末才真正停服）。因此 CANCELLED
+ * 且期末未到视同 Pro 有效——降级 / 切周期都不能让商家在已付周期内被锁功能。
+ * 纯函数、零依赖，供 billing.server 与 UI 共同引用。
+ */
+export function isProEntitled(
+    status: string | null | undefined,
+    currentPeriodEnd?: Date | string | null,
+    now: Date = new Date(),
+): boolean {
+    const normalized = String(status ?? "").toUpperCase();
+    if (normalized === "ACTIVE" || normalized === "TRIALING") return true;
+    if (normalized === "CANCELLED" && currentPeriodEnd) {
+        return new Date(currentPeriodEnd).getTime() > now.getTime();
+    }
+    return false;
+}
+
 /* ------------------------------ 功能门控 ------------------------------ */
 
 /**
