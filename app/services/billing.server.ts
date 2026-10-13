@@ -57,7 +57,7 @@ const ACTIVE_SUBSCRIPTIONS_QUERY = `#graphql
         status
         trialDays
         currentPeriodEnd
-        lineItems(first: 1) {
+        lineItems {
           plan {
             pricingDetails {
               __typename
