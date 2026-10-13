@@ -35,6 +35,8 @@ vi.mock("../db.server", () => ({ default: prismaMock }));
 
 import {
     applySubscriptionWebhook,
+    cancelSubscription,
+    changePlan,
     createSubscription,
     getWinbackSummary,
     isActiveStatus,
@@ -178,7 +180,7 @@ describe("syncPlanFromShopify（权威值回写）", () => {
         const admin = fakeAdmin(
             subscriptionPayload({ id: "gid://Sub/1", status: "ACTIVE", trialDays: 7, currentPeriodEnd: null }),
         );
-        const plan = await syncPlanFromShopify(admin, SHOP);
+        const { plan } = await syncPlanFromShopify(admin, SHOP);
         expect(plan).toBe("pro");
         const arg = prismaMock.planState.upsert.mock.calls[0][0];
         expect(arg.create).toMatchObject({ shop: SHOP, plan: "pro", everPro: true });
@@ -187,7 +189,7 @@ describe("syncPlanFromShopify（权威值回写）", () => {
 
     it("无有效订阅 → plan=free", async () => {
         const admin = fakeAdmin(subscriptionPayload(null));
-        const plan = await syncPlanFromShopify(admin, SHOP);
+        const { plan } = await syncPlanFromShopify(admin, SHOP);
         expect(plan).toBe("free");
         expect(prismaMock.planState.upsert.mock.calls[0][0].create).toMatchObject({
             plan: "free",
@@ -230,6 +232,36 @@ describe("syncPlanFromShopify（权威值回写）", () => {
         await syncPlanFromShopify(admin, SHOP);
         expect(prismaMock.discountState.findUnique).not.toHaveBeenCalled();
     });
+
+    it("无 active 但快照为 CANCELLED 且未到期 → 保持 pro（降级宽限），不写 billingStatus", async () => {
+        prismaMock.planState.findUnique.mockResolvedValue({
+            plan: "pro",
+            everPro: true,
+            billingStatus: "CANCELLED",
+            periodEndsAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        });
+        const admin = fakeAdmin(subscriptionPayload(null));
+        const { plan } = await syncPlanFromShopify(admin, SHOP);
+        expect(plan).toBe("pro");
+        const update = prismaMock.planState.upsert.mock.calls[0][0].update;
+        expect(update).not.toHaveProperty("billingStatus");
+        expect(update).not.toHaveProperty("periodEndsAt");
+        // 档位未变，不停折扣
+        expect(prismaMock.discountState.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("无 active，CANCELLED 已到期 → 回落 free 并触发折扣停用", async () => {
+        prismaMock.planState.findUnique.mockResolvedValue({
+            plan: "pro",
+            everPro: true,
+            billingStatus: "CANCELLED",
+            periodEndsAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        });
+        const admin = fakeAdmin(subscriptionPayload(null));
+        const { plan } = await syncPlanFromShopify(admin, SHOP);
+        expect(plan).toBe("free");
+        expect(prismaMock.discountState.findUnique).toHaveBeenCalled();
+    });
 });
 
 describe("applySubscriptionWebhook", () => {
@@ -243,8 +275,44 @@ describe("applySubscriptionWebhook", () => {
         prismaMock.planState.findUnique.mockResolvedValue({ plan: "free", everPro: false });
         await applySubscriptionWebhook(SHOP, { app_subscription: { status: "ACTIVE" } });
         const arg = prismaMock.planState.upsert.mock.calls[0][0];
-        expect(arg.update).toMatchObject({ plan: "pro" });
+        expect(arg.update).toMatchObject({ plan: "pro", billingStatus: "ACTIVE" });
         expect(arg.update).not.toHaveProperty("trialEndsAt");
+    });
+
+    it("CANCELLED 且快照周期末未到 → 保持 pro（降级宽限），档位未变不停折扣", async () => {
+        prismaMock.planState.findUnique.mockResolvedValue({
+            plan: "pro",
+            everPro: true,
+            periodEndsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        });
+        const plan = await applySubscriptionWebhook(SHOP, {
+            app_subscription: { status: "CANCELLED" },
+        });
+        expect(plan).toBe("pro");
+        expect(prismaMock.discountState.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("CANCELLED 且已到期 → free", async () => {
+        prismaMock.planState.findUnique.mockResolvedValue({
+            plan: "pro",
+            everPro: true,
+            periodEndsAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        });
+        const plan = await applySubscriptionWebhook(SHOP, {
+            app_subscription: { status: "CANCELLED" },
+        });
+        expect(plan).toBe("free");
+    });
+
+    it("CANCELLED + payload 携带未来 current_period_end（无快照）→ 宽限 pro，并写入周期末", async () => {
+        const end = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        const plan = await applySubscriptionWebhook(SHOP, {
+            app_subscription: { status: "CANCELLED", current_period_end: end.toISOString() },
+        });
+        expect(plan).toBe("pro");
+        const update = prismaMock.planState.upsert.mock.calls[0][0].update;
+        expect(update.billingStatus).toBe("CANCELLED");
+        expect(update.periodEndsAt).toEqual(end);
     });
 });
 
@@ -354,6 +422,147 @@ describe("getWinbackSummary（真实数字）", () => {
         expect((await getWinbackSummary(SHOP)).showSummary).toBe(false);
         prismaMock.planState.findUnique.mockResolvedValue({ plan: "free", trialEndsAt: null, everPro: false, winbackSeenAt: null });
         expect((await getWinbackSummary(SHOP)).showSummary).toBe(false);
+    });
+});
+
+describe("cancelSubscription（应用内降级，审核 1.2.3）", () => {
+    it("prorate=false 取消：透传参数，返回 CANCELLED 节点（权益保留到期末）", async () => {
+        const end = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+        const graphql: ReturnType<typeof vi.fn> = vi.fn(async () =>
+            response({
+                data: {
+                    appSubscriptionCancel: {
+                        appSubscription: {
+                            id: "gid://Sub/1",
+                            name: "Tablely Pro (Monthly)",
+                            status: "CANCELLED",
+                            currentPeriodEnd: end,
+                        },
+                        userErrors: [],
+                    },
+                },
+            }),
+        );
+        const admin = { graphql } as unknown as GraphqlAdmin;
+        const sub = await cancelSubscription(admin, { id: "gid://Sub/1", prorate: false });
+        expect(String(graphql.mock.calls[0][0])).toContain("appSubscriptionCancel");
+        expect(graphql.mock.calls[0][1].variables).toEqual({
+            id: "gid://Sub/1",
+            prorate: false,
+        });
+        expect(sub.status).toBe("CANCELLED");
+        expect(sub.currentPeriodEnd).toBe(end);
+        expect(sub.interval).toBeNull();
+    });
+
+    it("默认 prorate=false（关闭自动续费而非立即取消）", async () => {
+        const admin = fakeAdmin({
+            data: {
+                appSubscriptionCancel: {
+                    appSubscription: {
+                        id: "gid://Sub/1",
+                        status: "CANCELLED",
+                        currentPeriodEnd: null,
+                    },
+                    userErrors: [],
+                },
+            },
+        });
+        await cancelSubscription(admin, { id: "gid://Sub/1" });
+        const vars = (admin.graphql as ReturnType<typeof vi.fn>).mock.calls[0][1].variables;
+        expect(vars.prorate).toBe(false);
+    });
+
+    it("userErrors 非空 → 抛错", async () => {
+        const admin = fakeAdmin({
+            data: { appSubscriptionCancel: { userErrors: [{ message: "not found" }] } },
+        });
+        await expect(
+            cancelSubscription(admin, { id: "gid://Sub/x", prorate: true }),
+        ).rejects.toThrow("not found");
+    });
+});
+
+describe("changePlan（月⇄年切换）", () => {
+    /** 按 GraphQL 文档名分发的假 Admin：查询→取消→创建 */
+    function dispatchAdmin(): GraphqlAdmin & { graphql: ReturnType<typeof vi.fn> } {
+        const graphql = vi.fn(async (query: string) => {
+            if (query.includes("TablelyActiveSubscriptions")) {
+                return response(
+                    subscriptionPayload({
+                        id: "gid://Sub/1",
+                        name: "Tablely Pro (Monthly)",
+                        status: "ACTIVE",
+                        trialDays: null,
+                        currentPeriodEnd: null,
+                    }),
+                );
+            }
+            if (query.includes("appSubscriptionCancel")) {
+                return response({
+                    data: {
+                        appSubscriptionCancel: {
+                            appSubscription: {
+                                id: "gid://Sub/1",
+                                status: "CANCELLED",
+                                currentPeriodEnd: null,
+                            },
+                            userErrors: [],
+                        },
+                    },
+                });
+            }
+            return response({
+                data: {
+                    appSubscriptionCreate: {
+                        confirmationUrl: "https://shopify.com/confirm/new",
+                        userErrors: [],
+                    },
+                },
+            });
+        });
+        return { graphql } as unknown as GraphqlAdmin & { graphql: ReturnType<typeof vi.fn> };
+    }
+
+    it("有有效订阅：先 prorate=true 取消旧单，再创建新单", async () => {
+        const admin = dispatchAdmin();
+        const url = await changePlan(admin, {
+            planKey: "pro_annual",
+            returnUrl: "https://admin.shopify.com/store/x/apps/y/app/plans",
+            test: true,
+        });
+        expect(url).toBe("https://shopify.com/confirm/new");
+        const calls = admin.graphql.mock.calls;
+        expect(calls).toHaveLength(3);
+        expect(String(calls[0][0])).toContain("TablelyActiveSubscriptions");
+        expect(String(calls[1][0])).toContain("appSubscriptionCancel");
+        expect(calls[1][1].variables.prorate).toBe(true);
+        expect(String(calls[2][0])).toContain("appSubscriptionCreate");
+    });
+
+    it("无有效订阅：跳过取消直接创建", async () => {
+        const graphql: ReturnType<typeof vi.fn> = vi.fn(async (query: string) => {
+            if (query.includes("TablelyActiveSubscriptions")) {
+                return response(subscriptionPayload(null));
+            }
+            return response({
+                data: {
+                    appSubscriptionCreate: {
+                        confirmationUrl: "https://shopify.com/confirm/x",
+                        userErrors: [],
+                    },
+                },
+            });
+        });
+        const admin = { graphql } as unknown as GraphqlAdmin;
+        const url = await changePlan(admin, {
+            planKey: "pro_monthly",
+            returnUrl: "https://x",
+            test: true,
+        });
+        expect(url).toBe("https://shopify.com/confirm/x");
+        expect(graphql).toHaveBeenCalledTimes(2);
+        expect(String(graphql.mock.calls[1][0])).toContain("appSubscriptionCreate");
     });
 });
 

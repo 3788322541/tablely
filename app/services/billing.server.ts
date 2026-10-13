@@ -20,7 +20,9 @@ import prisma from "../db.server";
 import {
     PLAN_OPTIONS,
     TRIAL_DAYS,
+    isProEntitled,
     normalizePlan,
+    type BillingInterval,
     type Plan,
     type PlanKey,
 } from "../plan";
@@ -55,6 +57,16 @@ const ACTIVE_SUBSCRIPTIONS_QUERY = `#graphql
         status
         trialDays
         currentPeriodEnd
+        lineItems(first: 1) {
+          plan {
+            pricingDetails {
+              __typename
+              ... on AppRecurringPricing {
+                interval
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -126,16 +138,66 @@ const DEACTIVATE_DISCOUNT_MUTATION = `#graphql
   }
 `;
 
+const CANCEL_SUBSCRIPTION_MUTATION = `#graphql
+  mutation TablelyCancelSubscription($id: ID!, $prorate: Boolean) {
+    appSubscriptionCancel(id: $id, prorate: $prorate) {
+      appSubscription {
+        id
+        name
+        status
+        currentPeriodEnd
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }
+`;
+
 type UserError = { field?: string[]; message: string };
+
+type SubscriptionNode = {
+    id: string;
+    name: string | null;
+    status: string;
+    /** Shopify 配置的试用总长（天）；非试用期为 null */
+    trialDays: number | null;
+    /** TRIALING 时 = 试用结束时间；ACTIVE 时 = 当前计费周期结束时间 */
+    currentPeriodEnd: string | null;
+    lineItems?: {
+        plan?: {
+            pricingDetails?: {
+                __typename?: string;
+                interval?: BillingInterval;
+            };
+        };
+    }[];
+};
 
 export type ActiveSubscription = {
     id: string;
     name: string | null;
     status: string;
-    trialDays: number | null;
     /** TRIALING 时 = 试用结束时间；ACTIVE 时 = 当前计费周期结束时间 */
     currentPeriodEnd: string | null;
+    /** 月付 EVERY_30_DAYS / 年付 ANNUAL；查不到时 null */
+    interval: BillingInterval | null;
 };
+
+function mapSubscriptionNode(node: SubscriptionNode): ActiveSubscription {
+    const pricing = node.lineItems?.[0]?.plan?.pricingDetails;
+    return {
+        id: node.id,
+        name: node.name,
+        status: String(node.status ?? "").toUpperCase(),
+        currentPeriodEnd: node.currentPeriodEnd ?? null,
+        interval:
+            pricing?.__typename === "AppRecurringPricing"
+                ? (pricing.interval ?? null)
+                : null,
+    };
+}
 
 /** 查当前有效订阅（ACTIVE / TRIALING），没有则 null */
 export async function getActiveSubscription(
@@ -143,10 +205,69 @@ export async function getActiveSubscription(
 ): Promise<ActiveSubscription | null> {
     const res = await admin.graphql(ACTIVE_SUBSCRIPTIONS_QUERY);
     const json = (await res.json()) as {
-        data?: { currentAppInstallation?: { activeSubscriptions?: ActiveSubscription[] } };
+        data?: { currentAppInstallation?: { activeSubscriptions?: SubscriptionNode[] } };
     };
     const list = json?.data?.currentAppInstallation?.activeSubscriptions ?? [];
-    return list.find((item) => isActiveStatus(item.status)) ?? null;
+    const node = list.find((item) => isActiveStatus(item.status));
+    return node ? mapSubscriptionNode(node) : null;
+}
+
+/**
+ * 取消订阅（商家在应用内自助降级，App Store 审核 1.2.3）。
+ * prorate=false（默认）：关闭自动续费，权益保留到 currentPeriodEnd；
+ * prorate=true：立即取消并按比例退款（用于切换月/年周期）。
+ */
+export async function cancelSubscription(
+    admin: GraphqlAdmin,
+    input: { id: string; prorate?: boolean },
+): Promise<ActiveSubscription> {
+    const res = await admin.graphql(CANCEL_SUBSCRIPTION_MUTATION, {
+        variables: { id: input.id, prorate: input.prorate ?? false },
+    });
+    const json = (await res.json()) as {
+        errors?: { message: string }[];
+        data?: {
+            appSubscriptionCancel?: {
+                appSubscription?: SubscriptionNode;
+                userErrors?: UserError[];
+            };
+        };
+    };
+    if (Array.isArray(json.errors) && json.errors.length) {
+        throw new Error(json.errors.map((error) => error.message).join("; "));
+    }
+    const result = json.data?.appSubscriptionCancel;
+    const userErrors = result?.userErrors ?? [];
+    if (userErrors.length) {
+        throw new Error(
+            userErrors
+                .map((error) => [...(error.field ?? []), error.message].join(" "))
+                .join("; "),
+        );
+    }
+    if (!result?.appSubscription) {
+        throw new Error("appSubscriptionCancel 未返回订阅");
+    }
+    // cancel 返回的节点没有 lineItems，interval 对取消态无意义，补 null 即可。
+    return mapSubscriptionNode({
+        ...result.appSubscription,
+        trialDays: null,
+    });
+}
+
+/**
+ * 切换套餐/周期（月⇄年）：旧订阅 prorate=true 立即按比例取消（Shopify 账单
+ * 历史自动留痕），再创建新订阅，返回 Shopify 确认页 URL。
+ */
+export async function changePlan(
+    admin: GraphqlAdmin,
+    input: { planKey: PlanKey; returnUrl: string; test: boolean },
+): Promise<string> {
+    const active = await getActiveSubscription(admin);
+    if (active) {
+        await cancelSubscription(admin, { id: active.id, prorate: true });
+    }
+    return createSubscription(admin, input);
 }
 
 /**
@@ -202,6 +323,10 @@ export type PlanStateSnapshot = {
     trialEndsAt: Date | null;
     everPro: boolean;
     winbackSeenAt: Date | null;
+    /** 最近一次 Shopify 订阅状态原文（ACTIVE/TRIALING/CANCELLED…） */
+    billingStatus: string | null;
+    /** 计费周期末（降级宽限期权益保留到该时刻） */
+    periodEndsAt: Date | null;
 };
 
 /** 读档位快照（无记录即 Free） */
@@ -212,6 +337,8 @@ export async function readPlanState(shop: string): Promise<PlanStateSnapshot> {
         trialEndsAt: row?.trialEndsAt ?? null,
         everPro: row?.everPro ?? false,
         winbackSeenAt: row?.winbackSeenAt ?? null,
+        billingStatus: row?.billingStatus ?? null,
+        periodEndsAt: row?.periodEndsAt ?? null,
     };
 }
 
@@ -301,47 +428,130 @@ export async function syncDiscountsForPlan(
 }
 
 /**
+ * 档位回写的统一入口（实时同步 / webhook / 取消动作共用）。
+ *
+ * - upsert PlanState：plan / syncedAt / everPro（只升不降）；
+ * - `billingStatus` / `periodEndsAt` / `trialEndsAt` 仅在调用方显式提供时写入
+ *   （webhook payload 通常不带周期末，不能把已有值抹掉）；
+ * - 档位发生**变化**时才同步折扣启停（幂等：同值重复调用不触发 Shopify 写）；
+ * - `admin` 取不到（webhook 离线会话失败）时跳过 Shopify 侧，DB 仍写。
+ */
+async function persistPlan(
+    admin: GraphqlAdmin | null | undefined,
+    shop: string,
+    args: {
+        plan: Plan;
+        prev: { plan: string | null; everPro: boolean | null } | null;
+        billingStatus?: string | null;
+        periodEndsAt?: Date | null;
+        trialEndsAt?: Date | null;
+    },
+): Promise<void> {
+    const now = new Date();
+    const prevPlan = normalizePlan(args.prev?.plan);
+
+    const createData: Record<string, unknown> = {
+        shop,
+        plan: args.plan,
+        trialEndsAt: args.trialEndsAt ?? null,
+        billingStatus: args.billingStatus ?? null,
+        periodEndsAt: args.periodEndsAt ?? null,
+        syncedAt: now,
+        everPro: args.plan === "pro",
+    };
+    const updateData: Record<string, unknown> = {
+        plan: args.plan,
+        syncedAt: now,
+    };
+    if (args.billingStatus !== undefined) updateData.billingStatus = args.billingStatus;
+    if (args.periodEndsAt !== undefined) updateData.periodEndsAt = args.periodEndsAt;
+    if (args.trialEndsAt !== undefined) updateData.trialEndsAt = args.trialEndsAt;
+    if (args.plan === "pro" && !args.prev?.everPro) updateData.everPro = true;
+
+    await prisma.planState.upsert({
+        where: { shop },
+        create: createData as never,
+        update: updateData as never,
+    });
+
+    if (prevPlan !== args.plan) {
+        if (admin) await syncDiscountsForPlan(admin, shop, args.plan);
+        logStructured("info", "billing.plan_changed", {
+            shop,
+            from: prevPlan,
+            to: args.plan,
+        });
+    } else {
+        logStructured("info", "billing.plan_synced", { shop, plan: args.plan });
+    }
+}
+
+/**
  * 向 Shopify 查一次并回写档位（权威值覆盖本地快照）。
  *
  * `trialEndsAt` 只在 TRIALING 时写 `currentPeriodEnd`（试用结束时间）；
  * ACTIVE 时它是计费周期结束时间，不能当试用期用，故置 `null`。
- * 档位发生**变化**时才同步折扣启停（幂等：同值重复调用不触发 Shopify 写）。
+ *
+ * 无 ACTIVE 订阅时，若本地快照为 CANCELLED 且 `periodEndsAt` 未到，保持 pro
+ * （prorate=false 取消后的降级宽限期），且**不覆盖** billingStatus/periodEndsAt；
+ * 到期后自然回落 free（届时同步停用 3 个 automatic discount）。
  */
 export async function syncPlanFromShopify(
     admin: GraphqlAdmin,
     shop: string,
-): Promise<Plan> {
+): Promise<{ plan: Plan; active: ActiveSubscription | null }> {
     const active = await getActiveSubscription(admin);
-    const plan: Plan = active ? "pro" : "free";
-    const now = new Date();
-    const trialing = active ? active.status.toUpperCase() === "TRIALING" : false;
-    const trialEndsAt =
-        trialing && active?.currentPeriodEnd ? new Date(active.currentPeriodEnd) : null;
+    const prev = await prisma.planState.findUnique({
+        where: { shop },
+        select: { plan: true, everPro: true, billingStatus: true, periodEndsAt: true },
+    });
 
+    if (!active) {
+        const plan: Plan = isProEntitled(prev?.billingStatus, prev?.periodEndsAt)
+            ? "pro"
+            : "free";
+        await persistPlan(admin, shop, { plan, prev });
+        return { plan, active: null };
+    }
+
+    const periodEndsAt = active.currentPeriodEnd
+        ? new Date(active.currentPeriodEnd)
+        : null;
+    const trialEndsAt = active.status === "TRIALING" ? periodEndsAt : null;
+    const plan: Plan = "pro";
+
+    await persistPlan(admin, shop, {
+        plan,
+        prev,
+        billingStatus: active.status,
+        periodEndsAt,
+        trialEndsAt,
+    });
+
+    return { plan, active };
+}
+
+/**
+ * 取消 / 切换动作返回后立即落库（不必等 webhook）。
+ * CANCELLED 且 `currentPeriodEnd` 未到期时保持 pro（降级宽限期）。
+ */
+export async function syncSubscriptionState(
+    admin: GraphqlAdmin,
+    shop: string,
+    sub: ActiveSubscription,
+): Promise<Plan> {
+    const periodEndsAt = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
+    const plan: Plan = isProEntitled(sub.status, periodEndsAt) ? "pro" : "free";
     const prev = await prisma.planState.findUnique({
         where: { shop },
         select: { plan: true, everPro: true },
     });
-    const prevPlan = normalizePlan(prev?.plan);
-
-    await prisma.planState.upsert({
-        where: { shop },
-        create: { shop, plan, trialEndsAt, syncedAt: now, everPro: plan === "pro" },
-        update: {
-            plan,
-            trialEndsAt,
-            syncedAt: now,
-            ...(plan === "pro" && !prev?.everPro ? { everPro: true } : {}),
-        },
+    await persistPlan(admin, shop, {
+        plan,
+        prev,
+        billingStatus: sub.status,
+        periodEndsAt,
     });
-
-    if (prevPlan !== plan) {
-        await syncDiscountsForPlan(admin, shop, plan);
-        logStructured("info", "billing.plan_changed", { shop, from: prevPlan, to: plan });
-    } else {
-        logStructured("info", "billing.plan_synced", { shop, plan });
-    }
-
     return plan;
 }
 
@@ -380,18 +590,21 @@ type SubscriptionPayload = {
         admin_graphql_api_id?: string;
         name?: string;
         status?: string;
+        current_period_end?: string | null;
     };
     admin_graphql_api_id?: string;
     name?: string;
     status?: string;
+    current_period_end?: string | null;
 };
 
 /**
  * `app_subscriptions/update` 回写（实时主路径）。
  *
- * ACTIVE | TRIALING → pro；CANCELLED | EXPIRED | DECLINED | FROZEN → free。
- * ⚠️ webhook 的 payload **没有** currentPeriodEnd，故这里**不动** `trialEndsAt`
- *    （那是 `syncPlanFromShopify` 写下的试用结束时间，抹掉会让「还剩几天」失真）。
+ * ACTIVE | TRIALING → pro；EXPIRED | DECLINED | FROZEN → free；
+ * CANCELLED 且周期末未到 → 保持 pro（prorate=false 降级宽限期，权益到期才真正降级）。
+ * ⚠️ webhook 的 payload **通常没有** currentPeriodEnd，故 `periodEndsAt` / `trialEndsAt`
+ *    只在 payload 明确携带 / 之前已落库时参与判定，绝不抹掉已有日期。
  *
  * 档位变化时同步折扣启停；`admin` 由调用方通过离线会话取得，取不到时跳过 Shopify 侧
  * （DB 侧标记仍写，`shop/redact` 与每日巡检会兜底）。
@@ -407,26 +620,27 @@ export async function applySubscriptionWebhook(
     const status = String(node.status ?? "").toUpperCase();
     if (!status) throw new Error("app_subscriptions/update 缺少 status");
 
-    const plan: Plan = isActiveStatus(status) ? "pro" : "free";
+    const periodEndFromPayload = node.current_period_end
+        ? new Date(node.current_period_end)
+        : null;
+
     const prev = await prisma.planState.findUnique({
         where: { shop },
-        select: { plan: true, everPro: true },
-    });
-    const prevPlan = normalizePlan(prev?.plan);
-
-    await prisma.planState.upsert({
-        where: { shop },
-        create: { shop, plan, everPro: plan === "pro", syncedAt: new Date() },
-        update: {
-            plan,
-            syncedAt: new Date(),
-            ...(plan === "pro" && !prev?.everPro ? { everPro: true } : {}),
-        },
+        select: { plan: true, everPro: true, periodEndsAt: true },
     });
 
-    if (prevPlan !== plan && admin) {
-        await syncDiscountsForPlan(admin, shop, plan);
+    let plan: Plan = isActiveStatus(status) ? "pro" : "free";
+    if (plan === "free") {
+        const periodEnd = periodEndFromPayload ?? prev?.periodEndsAt ?? null;
+        if (isProEntitled(status, periodEnd)) plan = "pro";
     }
+
+    await persistPlan(admin, shop, {
+        plan,
+        prev,
+        billingStatus: status,
+        ...(periodEndFromPayload ? { periodEndsAt: periodEndFromPayload } : {}),
+    });
 
     return plan;
 }
@@ -439,6 +653,10 @@ export type PlanStatus = {
     trialDaysLeft: number | null;
     /** 是否处于「试用将尽」窗口（剩余 1–2 天，§19.4 触点①） */
     trialEndingSoon: boolean;
+    /** Shopify 订阅状态原文（ACTIVE/TRIALING/CANCELLED…） */
+    billingStatus: string | null;
+    /** 当前计费周期末（ISO 字符串）；降级宽限期的权益保留到该时刻 */
+    periodEndsAt: string | null;
 };
 
 /**
@@ -457,6 +675,8 @@ export async function readPlanStatus(shop: string): Promise<PlanStatus> {
         trialDaysLeft,
         trialEndingSoon:
             trialDaysLeft !== null && trialDaysLeft >= 1 && trialDaysLeft <= 2,
+        billingStatus: state.billingStatus,
+        periodEndsAt: state.periodEndsAt ? state.periodEndsAt.toISOString() : null,
     };
 }
 

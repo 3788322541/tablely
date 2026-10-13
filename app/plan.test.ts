@@ -6,6 +6,7 @@ import {
     TRIAL_DAYS,
     hasFeature,
     isPlanKey,
+    isProEntitled,
     isProLayout,
     normalizePlan,
     type ProFeature,
@@ -79,5 +80,36 @@ describe("isProLayout", () => {
         expect(isProLayout(undefined)).toBe(false);
         expect(isProLayout("inherit")).toBe(false);
         expect(isProLayout("")).toBe(false);
+    });
+});
+
+describe("isProEntitled（应用内降级宽限，审核 1.2.3）", () => {
+    const now = new Date("2026-10-13T00:00:00Z");
+    const future = new Date("2026-10-20T00:00:00Z");
+    const past = new Date("2026-10-01T00:00:00Z");
+
+    it("ACTIVE / TRIALING 一律享有 Pro", () => {
+        expect(isProEntitled("ACTIVE", null, now)).toBe(true);
+        expect(isProEntitled("TRIALING", null, now)).toBe(true);
+        expect(isProEntitled("active", past, now)).toBe(true);
+    });
+
+    it("CANCELLED 且周期末未到 → 仍享有 Pro（权益保留到期末）", () => {
+        expect(isProEntitled("CANCELLED", future, now)).toBe(true);
+        expect(isProEntitled("cancelled", future.toISOString(), now)).toBe(true);
+    });
+
+    it("CANCELLED 已到期 / 无期末时间 → 不再享有", () => {
+        expect(isProEntitled("CANCELLED", past, now)).toBe(false);
+        expect(isProEntitled("CANCELLED", null, now)).toBe(false);
+        expect(isProEntitled("CANCELLED", undefined, now)).toBe(false);
+    });
+
+    it("EXPIRED / DECLINED / FROZEN / 空值 → 不享有", () => {
+        expect(isProEntitled("EXPIRED", future, now)).toBe(false);
+        expect(isProEntitled("DECLINED", future, now)).toBe(false);
+        expect(isProEntitled("FROZEN", future, now)).toBe(false);
+        expect(isProEntitled("", future, now)).toBe(false);
+        expect(isProEntitled(null, future, now)).toBe(false);
     });
 });

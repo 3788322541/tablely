@@ -266,6 +266,10 @@ model PlanState {
   trialEndsAt    DateTime? @db.Timestamptz(3)
   everPro        Boolean   @default(false) // 曾为 Pro（降级判定用，只置 true 不回退）
   winbackSeenAt  DateTime? @db.Timestamptz(3) // 降级说明卡已关闭的时间（§19.4 触点②）
+  // 最近一次 Shopify 订阅的状态原文（ACTIVE/TRIALING/CANCELLED…）与计费周期末。
+  // prorate=false 取消后订阅立即 CANCELLED 但权益保留到 periodEndsAt（降级宽限，审核规则 1.2.3）。
+  billingStatus  String?
+  periodEndsAt   DateTime? @db.Timestamptz(3)
   syncedAt       DateTime? @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
