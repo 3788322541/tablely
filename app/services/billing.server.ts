@@ -221,6 +221,11 @@ export async function cancelSubscription(
     admin: GraphqlAdmin,
     input: { id: string; prorate?: boolean },
 ): Promise<ActiveSubscription> {
+    // prorate=false 降级宽限：实测 cancel 响应节点不保证带回 currentPeriodEnd，
+    // 先快照取消前的订阅，防止响应里的 null 把宽限期末抹掉（曾导致取消后立即变 Free）。
+    const before =
+        input.prorate === true ? null : await getActiveSubscription(admin);
+
     const res = await admin.graphql(CANCEL_SUBSCRIPTION_MUTATION, {
         variables: { id: input.id, prorate: input.prorate ?? false },
     });
@@ -249,10 +254,18 @@ export async function cancelSubscription(
         throw new Error("appSubscriptionCancel 未返回订阅");
     }
     // cancel 返回的节点没有 lineItems，interval 对取消态无意义，补 null 即可。
-    return mapSubscriptionNode({
+    const cancelled = mapSubscriptionNode({
         ...result.appSubscription,
         trialDays: null,
     });
+    // 响应缺期末时间/周期时，用取消前快照兜底宽限期。
+    if (!cancelled.currentPeriodEnd && before?.currentPeriodEnd) {
+        cancelled.currentPeriodEnd = before.currentPeriodEnd;
+    }
+    if (!cancelled.interval && before?.interval) {
+        cancelled.interval = before.interval;
+    }
+    return cancelled;
 }
 
 /**
