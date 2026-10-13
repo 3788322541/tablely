@@ -426,60 +426,127 @@ describe("getWinbackSummary（真实数字）", () => {
 });
 
 describe("cancelSubscription（应用内降级，审核 1.2.3）", () => {
-    it("prorate=false 取消：透传参数，返回 CANCELLED 节点（权益保留到期末）", async () => {
-        const end = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
-        const graphql: ReturnType<typeof vi.fn> = vi.fn(async () =>
-            response({
-                data: {
-                    appSubscriptionCancel: {
-                        appSubscription: {
-                            id: "gid://Sub/1",
-                            name: "Tablely Pro (Monthly)",
-                            status: "CANCELLED",
-                            currentPeriodEnd: end,
-                        },
-                        userErrors: [],
+    const activeNode = (over: Record<string, unknown> = {}) => ({
+        id: "gid://Sub/1",
+        name: "Tablely Pro (Monthly)",
+        status: "ACTIVE",
+        trialDays: null,
+        currentPeriodEnd: null,
+        lineItems: [
+            {
+                plan: {
+                    pricingDetails: {
+                        __typename: "AppRecurringPricing",
+                        interval: "EVERY_30_DAYS",
                     },
                 },
-            }),
-        );
-        const admin = { graphql } as unknown as GraphqlAdmin;
-        const sub = await cancelSubscription(admin, { id: "gid://Sub/1", prorate: false });
-        expect(String(graphql.mock.calls[0][0])).toContain("appSubscriptionCancel");
-        expect(graphql.mock.calls[0][1].variables).toEqual({
+            },
+        ],
+        ...over,
+    });
+
+    /** prorate=false 会先查一次 ActiveSubscriptions 再发 cancel */
+    function cancelDispatchAdmin(opts: {
+        active: Record<string, unknown> | null;
+        cancelNode: Record<string, unknown> | null;
+        userErrors?: { message: string }[];
+    }): GraphqlAdmin & { graphql: ReturnType<typeof vi.fn> } {
+        const graphql = vi.fn(async (query: string) => {
+            if (query.includes("TablelyActiveSubscriptions")) {
+                return response(subscriptionPayload(opts.active));
+            }
+            return response({
+                data: {
+                    appSubscriptionCancel: {
+                        appSubscription: opts.cancelNode,
+                        userErrors: opts.userErrors ?? [],
+                    },
+                },
+            });
+        });
+        return { graphql } as unknown as GraphqlAdmin & {
+            graphql: ReturnType<typeof vi.fn>;
+        };
+    }
+
+    it("prorate=false 取消：先查后取消，透传参数，响应带期末时用响应值", async () => {
+        const end = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString();
+        const admin = cancelDispatchAdmin({
+            active: activeNode({ currentPeriodEnd: end }),
+            cancelNode: {
+                id: "gid://Sub/1",
+                name: "Tablely Pro (Monthly)",
+                status: "CANCELLED",
+                currentPeriodEnd: end,
+            },
+        });
+        const sub = await cancelSubscription(admin, {
+            id: "gid://Sub/1",
+            prorate: false,
+        });
+        const calls = admin.graphql.mock.calls;
+        expect(String(calls[0][0])).toContain("TablelyActiveSubscriptions");
+        expect(String(calls[1][0])).toContain("appSubscriptionCancel");
+        expect(calls[1][1].variables).toEqual({
             id: "gid://Sub/1",
             prorate: false,
         });
         expect(sub.status).toBe("CANCELLED");
         expect(sub.currentPeriodEnd).toBe(end);
-        expect(sub.interval).toBeNull();
+    });
+
+    it("cancel 响应不带 currentPeriodEnd 时，用取消前快照兜底宽限期与周期", async () => {
+        const end = new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString();
+        const admin = cancelDispatchAdmin({
+            active: activeNode({
+                currentPeriodEnd: end,
+                lineItems: [
+                    {
+                        plan: {
+                            pricingDetails: {
+                                __typename: "AppRecurringPricing",
+                                interval: "ANNUAL",
+                            },
+                        },
+                    },
+                ],
+            }),
+            // 线上实测：cancel 节点 currentPeriodEnd 为 null 且无 lineItems
+            cancelNode: {
+                id: "gid://Sub/1",
+                name: "Tablely Pro (Annual)",
+                status: "CANCELLED",
+                currentPeriodEnd: null,
+            },
+        });
+        const sub = await cancelSubscription(admin, { id: "gid://Sub/1" });
+        expect(sub.status).toBe("CANCELLED");
+        expect(sub.currentPeriodEnd).toBe(end);
+        expect(sub.interval).toBe("ANNUAL");
     });
 
     it("默认 prorate=false（关闭自动续费而非立即取消）", async () => {
-        const admin = fakeAdmin({
-            data: {
-                appSubscriptionCancel: {
-                    appSubscription: {
-                        id: "gid://Sub/1",
-                        status: "CANCELLED",
-                        currentPeriodEnd: null,
-                    },
-                    userErrors: [],
-                },
-            },
+        const admin = cancelDispatchAdmin({
+            active: activeNode(),
+            cancelNode: { id: "gid://Sub/1", status: "CANCELLED", currentPeriodEnd: null },
         });
         await cancelSubscription(admin, { id: "gid://Sub/1" });
-        const vars = (admin.graphql as ReturnType<typeof vi.fn>).mock.calls[0][1].variables;
-        expect(vars.prorate).toBe(false);
+        const calls = admin.graphql.mock.calls;
+        expect(calls[1][1].variables.prorate).toBe(false);
     });
 
-    it("userErrors 非空 → 抛错", async () => {
-        const admin = fakeAdmin({
-            data: { appSubscriptionCancel: { userErrors: [{ message: "not found" }] } },
+    it("prorate=true 不预查；userErrors 非空 → 抛错", async () => {
+        const admin = cancelDispatchAdmin({
+            active: activeNode(),
+            cancelNode: null,
+            userErrors: [{ message: "not found" }],
         });
         await expect(
             cancelSubscription(admin, { id: "gid://Sub/x", prorate: true }),
         ).rejects.toThrow("not found");
+        const calls = admin.graphql.mock.calls;
+        expect(calls).toHaveLength(1);
+        expect(String(calls[0][0])).toContain("appSubscriptionCancel");
     });
 });
 
