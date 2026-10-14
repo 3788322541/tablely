@@ -1,4 +1,4 @@
-tablely.zhenjunit.com {
+http://tablely.zhenjunit.com:8080 {
 	encode gzip
 	reverse_proxy tablely-app:3000
 }
