@@ -1,4 +1,8 @@
 http://tablely.zhenjunit.com:8080 {
 	encode gzip
+	handle_path /proof/* {
+		root * /srv/proof
+		file_server
+	}
 	reverse_proxy tablely-app:3000
 }

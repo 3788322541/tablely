@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="admin.css">
+<style>
+    html, body { width: 1600px; height: 900px; }
+    .brandmark { background: linear-gradient(135deg, #9a3412 0%, #c2410c 55%, #ea580c 100%); }
+    .cols { gap: 16px; }
+    .maincol { flex: 1.65; }
+    .sidecol { flex: 1; }
+    .approw { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #ebebeb; }
+    .approw:last-child { border-bottom: 0; }
+    .av2 {
+        width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 13px; font-weight: 700; color: #fff;
+    }
+    .appinfo { flex: 1; min-width: 0; }
+    .appname { font-size: 13.5px; font-weight: 650; color: #1a1a1a; }
+    .appmeta { font-size: 12px; color: #6d7175; margin-top: 2px; }
+    .appactions { display: flex; align-items: center; gap: 10px; }
+    .radio { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border-radius: 9px; font-size: 12.5px; cursor: default; }
+    .radio.on { background: #f4f0e9; }
+    .rdot {
+        width: 16px; height: 16px; border-radius: 50%; border: 1.8px solid #8a8a8a; margin-top: 1px;
+        flex-shrink: 0; background: #fff; position: relative;
+    }
+    .radio.on .rdot { border-color: #9a3412; }
+    .radio.on .rdot::after { content:""; position:absolute; inset:3px; border-radius:50%; background:#9a3412; }
+    .radio .rt { color: #303030; line-height: 1.35; }
+    .radio .rd { font-size: 11.5px; color: #6d7175; margin-top: 2px; }
+    .pro {
+        display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700;
+        background: linear-gradient(135deg, #fff1e8, #ffe2cc); color: #9a3412;
+        border: 1px solid #f3c5a6; border-radius: 999px; padding: 2px 8px; letter-spacing: .3px;
+    }
+    .notebox { background: #f7f7f7; border-radius: 8px; padding: 10px 12px; font-size: 12px; color: #505050; line-height: 1.45; }
+    .pending-pill {
+        display:inline-flex; align-items:center; height:22px; padding:0 10px; border-radius:999px;
+        background:#fff1e8; color:#9a3412; border:1px solid #f3c5a6; font-size:12px;font-weight:700;
+    }
+    .dot-live { width:6px;height:6px;border-radius:50%;background:#c2410c; }
+</style>
+</head>
+
+<body>
+<div class="sidebar">
+    <div class="store"><span class="av">N</span> North &amp; Loom</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l7-6 7 6v8a1 1 0 0 1-1 1h-4v-6H8v6H4a1 1 0 0 1-1-1z"/></svg>Home</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4h8l-1 7H7L6 4zM4 4h2M8 15h4M8.5 17h3"/></svg>Orders</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7l6-3 6 3-6 3-6-3zM4 7v6l6 3 6-3V7"/></svg>Products</div>
+    <div class="nav active"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-5 7-5s7 1.7 7 5"/></svg>Customers</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h12v10H4zM4 8h12"/></svg>Content</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 14V6M8 14V9M12 14V4M16 14v-3"/></svg>Analytics</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 10l4 4 10-10"/></svg>Marketing</div>
+    <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3v14M4 7h9a3 3 0 0 1 0 6H7a3 3 0 0 1 0-6"/></svg>Discounts</div>
+    <div class="nav-sep"></div>
+    <div class="nav" style="font-weight:640;color:#303030"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="#9a3412" stroke-width="1.8"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M7 8h6M7 11h4"/></svg>Tablely</div>
+    <div class="side-foot">Sandbox · plan: Pro</div>
+</div>
+
+<div class="main">
+    <div class="topbar">
+        <span class="crumb">Customers / <b>Wholesale</b></span>
+        <span class="search"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="9" r="6"/><path d="M14 14l3.5 3.5"/></svg>Search</span>
+    </div>
+    <div class="appnav">
+        <div class="brand"><span class="brandmark"></span><span class="brandname">Tablely</span></div>
+        <span class="tab">Overview</span>
+        <span class="tab">Tables</span>
+        <span class="tab on">Wholesale</span>
+        <span class="tab">Design</span>
+        <span class="tab">Help</span>
+    </div>
+    <div class="content">
+        <div class="frow" style="justify-content:space-between">
+            <div class="frow" style="gap:12px">
+                <span class="ptitle">Wholesale</span>
+                <span class="pending-pill"><span class="dot-live"></span>&nbsp;3 pending applications</span>
+            </div>
+            <span class="btn">Copy form link</span>
+        </div>
+
+        <div class="cols">
+            <div class="col maincol">
+                <div class="sec" style="flex:1">
+                    <div class="frow" style="justify-content:space-between">
+                        <h2>Wholesale applications</h2>
+                        <span class="sub">5 total · sorted by newest</span>
+                    </div>
+                    <div class="approw">
+                        <span class="av2" style="background:#9a3412">MH</span>
+                        <div class="appinfo">
+                            <div class="appname">Maren Holt</div>
+                            <div class="appmeta">Atelier Holt ApS · Denmark · Oct 12, 2026</div>
+                        </div>
+                        <span class="badge warning">Pending</span>
+                        <div class="appactions">
+                            <span class="btn plain">View details</span>
+                            <span class="btn crit">Reject</span>
+                            <span class="btn primary">Approve</span>
+                        </div>
+                    </div>
+                    <div class="approw">
+                        <span class="av2" style="background:#0f766e">LF</span>
+                        <div class="appinfo">
+                            <div class="appname">Luca Ferrero</div>
+                            <div class="appmeta">Tessuti Ferrero S.r.l. · Italy · Oct 10, 2026</div>
+                        </div>
+                        <span class="badge warning">Pending</span>
+                        <div class="appactions">
+                            <span class="btn plain">View details</span>
+                            <span class="btn crit">Reject</span>
+                            <span class="btn primary">Approve</span>
+                        </div>
+                    </div>
+                    <div class="approw">
+                        <span class="av2" style="background:#7c3aed">YT</span>
+                        <div class="appinfo">
+                            <div class="appname">Yuki Tanaka</div>
+                            <div class="appmeta">Bedrock Goods Co. · Japan · Oct 8, 2026</div>
+                        </div>
+                        <span class="badge warning">Pending</span>
+                        <div class="appactions">
+                            <span class="btn plain">View details</span>
+                            <span class="btn crit">Reject</span>
+                            <span class="btn primary">Approve</span>
+                        </div>
+                    </div>
+                    <div class="approw">
+                        <span class="av2" style="background:#3f6212">SR</span>
+                        <div class="appinfo">
+                            <div class="appname">Sofia Reyes</div>
+                            <div class="appmeta">Casa Norte Concept Store · Spain · Sep 28, 2026</div>
+                        </div>
+                        <span class="badge success">Approved</span>
+                        <div class="appactions">
+                            <span class="btn plain">View details</span>
+                        </div>
+                    </div>
+                    <div class="approw">
+                        <span class="av2" style="background:#6b7280">OB</span>
+                        <div class="appinfo">
+                            <div class="appname">Owen Bradley</div>
+                            <div class="appmeta">Bradley &amp; Sons Market · United Kingdom · Sep 20, 2026</div>
+                        </div>
+                        <span class="badge neutral">Rejected</span>
+                        <div class="appactions">
+                            <span class="btn plain">View details</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col sidecol">
+                <div class="sec fix">
+                    <div class="frow" style="justify-content:space-between"><h2>Wholesale access</h2><span class="pro">PRO</span></div>
+                    <div class="radio">
+                        <span class="rdot"></span>
+                        <div><div class="rt">Off — everyone sees tables and prices</div></div>
+                    </div>
+                    <div class="radio on">
+                        <span class="rdot"></span>
+                        <div><div class="rt">Hide prices from unapproved customers</div>
+                        <div class="rd">Visitors see the table but prices are replaced with “Login for wholesale price”.</div></div>
+                    </div>
+                    <div class="radio">
+                        <span class="rdot"></span>
+                        <div><div class="rt">Hide the whole table from unapproved customers</div></div>
+                    </div>
+                </div>
+                <div class="sec fix">
+                    <h2>Approved customer tags</h2>
+                    <div class="frow">
+                        <span class="chip on">wholesale</span>
+                        <span class="chip">b2b-tier-1</span>
+                        <span class="chip">distributor</span>
+                    </div>
+                    <div class="notebox">Tablely never writes to customer data. Add the tag yourself in Shopify admin.</div>
+                </div>
+                <div class="sec" style="flex:1">
+                    <div class="frow" style="justify-content:space-between">
+                        <h2>Wholesale prices</h2>
+                        <span class="switch sw on" style="margin-left:auto"></span>
+                    </div>
+                    <div class="frow" style="justify-content:space-between">
+                        <h2>Tier pricing</h2>
+                        <span class="switch sw on" style="margin-left:auto"></span>
+                    </div>
+                    <div class="sub">Quantity breaks are shown per variant in every order table.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
