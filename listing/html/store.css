@@ -1,0 +1,648 @@
+/* Tablely listing screenshots — storefront theme chrome + order table */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html,
+body {
+    width: 1600px;
+    height: 900px;
+    overflow: hidden;
+}
+
+body {
+    font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+    background: #faf8f5;
+    color: #1f1c18;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- store chrome ---------- */
+.ann {
+    height: 38px;
+    background: #1f1c18;
+    color: #f3ece2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12.5px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+}
+
+.hdr {
+    height: 78px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    gap: 40px;
+    padding: 0 56px;
+    border-bottom: 1px solid #ece6dc;
+}
+
+.logo {
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+}
+
+.nav {
+    display: flex;
+    gap: 30px;
+    font-size: 14px;
+    color: #4a453e;
+}
+
+.hicons {
+    margin-left: auto;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    color: #1f1c18;
+}
+
+.hicons svg {
+    width: 21px;
+    height: 21px;
+}
+
+.cart-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    border: 1px solid #ddd4c7;
+    border-radius: 999px;
+    padding: 8px 15px;
+}
+
+.crumbs {
+    padding: 22px 56px 0;
+    font-size: 12.5px;
+    color: #8a8275;
+}
+
+.crumbs b {
+    color: #4a453e;
+    font-weight: 500;
+}
+
+/* ---------- product layout ---------- */
+.pgrid {
+    display: flex;
+    gap: 56px;
+    padding: 22px 56px 0;
+    height: 784px;
+}
+
+.gallery {
+    flex: 0 0 620px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.gmain {
+    flex: 1;
+    border-radius: 10px;
+    background: #efe8dd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.gmain svg {
+    width: 72%;
+    height: 72%;
+}
+
+.gthumbs {
+    display: flex;
+    gap: 12px;
+    height: 92px;
+}
+
+.gthumbs div {
+    flex: 1;
+    border-radius: 8px;
+    background: #efe8dd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+}
+
+.gthumbs div.on {
+    border-color: #1f1c18;
+}
+
+.gthumbs svg {
+    width: 52%;
+    height: 52%;
+}
+
+.buy {
+    flex: 1;
+    min-width: 0;
+}
+
+.vendor {
+    font-size: 12.5px;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    color: #8a8275;
+    margin-bottom: 8px;
+}
+
+.ptitle {
+    font-size: 33px;
+    font-weight: 600;
+    letter-spacing: -.4px;
+    margin-bottom: 12px;
+}
+
+.pprice {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.pprice .tax {
+    font-size: 12.5px;
+    font-weight: 400;
+    color: #8a8275;
+    margin-left: 8px;
+}
+
+.pdesc {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: #5d574d;
+    margin: 10px 0 18px;
+}
+
+.optrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    font-size: 13.5px;
+}
+
+.sw {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid #d6cdbf;
+}
+
+.sw.on {
+    outline: 2px solid #1f1c18;
+    outline-offset: 2px;
+}
+
+/* ---------- Tablely order table ---------- */
+.tablely-root {
+    border-top: 1px solid #e4ddd0;
+    padding-top: 18px;
+    margin-top: 4px;
+    color: #1f1c18;
+}
+
+.tly-heading {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+table.tly {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+}
+
+.tly th,
+.tly td {
+    padding: 11px 8px;
+    border-bottom: 1px solid #efe9df;
+    vertical-align: middle;
+    text-align: left;
+}
+
+.tly thead th {
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+    color: #8a8275;
+    border-bottom: 1px solid #e0d8ca;
+    font-weight: 600;
+}
+
+.tly .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.tly .qtycol,
+.tly .actcol {
+    text-align: right;
+    width: 1%;
+    white-space: nowrap;
+}
+
+.pcell {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+
+.pcell .thumb {
+    width: 46px;
+    height: 46px;
+    border-radius: 8px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pcell .thumb svg {
+    width: 30px;
+    height: 30px;
+}
+
+.pcell .pt {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pcell .pn {
+    font-weight: 500;
+}
+
+.pcell .ps {
+    font-size: 11.5px;
+    color: #8a8275;
+}
+
+.pcell .phint {
+    font-size: 11.5px;
+    color: #9a6b2f;
+}
+
+.stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.step {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    border: 1px solid #d6cdbf;
+    background: #fbf9f6;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1f1c18;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+}
+
+.qty {
+    width: 58px;
+    height: 32px;
+    border: 1px solid #d6cdbf;
+    border-radius: 7px;
+    text-align: right;
+    padding: 0 9px;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    background: #fff;
+    color: #1f1c18;
+}
+
+.addbtn {
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 7px 13px;
+    border-radius: 7px;
+    border: 1px solid #d6cdbf;
+    background: #fbf9f6;
+    white-space: nowrap;
+}
+
+.addbtn.done {
+    background: #e7f3ea;
+    border-color: #bfe3cb;
+    color: #1a6b3c;
+}
+
+.soldout .pn,
+.soldout .price,
+.soldout .stock {
+    opacity: .45;
+}
+
+.soldout .qty,
+.soldout .step {
+    opacity: .4;
+}
+
+.oos-reason {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #b42318;
+}
+
+.row-msg {
+    display: block;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #b42318;
+    margin-top: 3px;
+}
+
+.row-msg.warn {
+    color: #9a6b2f;
+}
+
+.tly-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+}
+
+.summary {
+    font-size: 13px;
+    color: #4a453e;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary b {
+    color: #1f1c18;
+}
+
+.submit {
+    background: #1f1c18;
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    font-size: 14.5px;
+    font-weight: 600;
+    padding: 14px 30px;
+}
+
+.submit.ghost {
+    background: #fff;
+    color: #1f1c18;
+    border: 1px solid #d6cdbf;
+}
+
+.feedback {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    background: #e7f3ea;
+    border: 1px solid #bfe3cb;
+    border-left: 3px solid #1a8a4a;
+    border-radius: 8px;
+    padding: 11px 14px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #175e36;
+    position: relative;
+    z-index: 7;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+
+.feedback svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
+/* ---------- matrix ---------- */
+.matrix-wrap {
+    padding: 14px 56px 0;
+}
+
+.matrix-head {
+    display: flex;
+    align-items: flex-end;
+    gap: 22px;
+    margin-bottom: 10px;
+}
+
+.matrix-head .thumb {
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    background: #efe8dd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.matrix-head .thumb svg {
+    width: 42px;
+    height: 42px;
+}
+
+table.tly-mx {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13.5px;
+    border: 1px solid #e4ddd0;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.tly-mx th,
+.tly-mx td {
+    border-bottom: 1px solid #efe9df;
+    border-right: 1px solid #efe9df;
+    padding: 12px 10px;
+    text-align: center;
+}
+
+.tly-mx thead th {
+    background: #fbf9f6;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: #8a8275;
+}
+
+.tly-mx tbody th {
+    background: #fbf9f6;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+    padding-left: 16px;
+}
+
+.tly-mx tr:last-child th,
+.tly-mx tr:last-child td {
+    border-bottom: 0;
+}
+
+.tly-mx th:last-child,
+.tly-mx td:last-child {
+    border-right: 0;
+}
+
+.mx-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.mx-price {
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.mx-empty {
+    color: #c3b9a9;
+    font-size: 16px;
+}
+
+.mx-oos {
+    font-size: 11px;
+    font-weight: 600;
+    color: #b42318;
+}
+
+.mx-cell .stepper {
+    transform: scale(.92);
+}
+
+/* ---------- cart drawer (shot 3) ---------- */
+.scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(31, 28, 24, .20);
+    z-index: 5;
+}
+
+.drawer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 400px;
+    background: #fff;
+    z-index: 6;
+    box-shadow: -12px 0 40px rgba(0, 0, 0, .12);
+    display: flex;
+    flex-direction: column;
+}
+
+.dh {
+    padding: 22px 26px;
+    border-bottom: 1px solid #ece6dc;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.dh b {
+    font-size: 17px;
+}
+
+.db {
+    flex: 1;
+    overflow: hidden;
+    padding: 8px 26px;
+}
+
+.cline {
+    display: flex;
+    gap: 13px;
+    padding: 15px 0;
+    border-bottom: 1px solid #f1ece3;
+}
+
+.cline .thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
+.cline .thumb svg {
+    width: 34px;
+    height: 34px;
+}
+
+.cline .ci {
+    flex: 1;
+    min-width: 0;
+}
+
+.cline .cn {
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cline .cs {
+    font-size: 12px;
+    color: #8a8275;
+    margin-top: 2px;
+}
+
+.cline .cp {
+    font-size: 13.5px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.df {
+    padding: 20px 26px 26px;
+    border-top: 1px solid #ece6dc;
+}
+
+.df .row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    margin-bottom: 14px;
+}
+
+.df .row b {
+    font-size: 16px;
+}
+
+.df .submit {
+    width: 100%;
+}
+
+.df .cont {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    font-size: 13px;
+    text-decoration: underline;
+    color: #4a453e;
+}

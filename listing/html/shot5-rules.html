@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="admin.css">
+    <style>
+        html,
+        body {
+            width: 1600px;
+            height: 900px;
+        }
+
+        .brandmark {
+            background: linear-gradient(135deg, #9a3412 0%, #c2410c 55%, #ea580c 100%);
+        }
+
+        .drawer {
+            width: 560px;
+        }
+
+        body {
+            position: relative;
+        }
+
+        .rules {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 12.5px;
+        }
+
+        .rules th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            color: #6d7175;
+            padding: 4px 8px 8px;
+        }
+
+        .rules td {
+            padding: 0 8px 10px;
+        }
+
+        .rules .variant {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rules .vsw {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid #c9cccf;
+            flex-shrink: 0;
+        }
+
+        .rules input {
+            width: 100%;
+            height: 30px;
+            border: 1px solid #8a8a8a;
+            border-radius: 7px;
+            padding: 0 9px;
+            font: inherit;
+            font-size: 12.5px;
+            background: #fff;
+        }
+
+        .rules input.empty {
+            color: #8a8a8a;
+        }
+
+        .pro {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10.5px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff1e8, #ffe2cc);
+            color: #9a3412;
+            border: 1px solid #f3c5a6;
+            border-radius: 999px;
+            padding: 2px 8px;
+            letter-spacing: .3px;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #6d7175;
+            line-height: 1.45;
+        }
+
+        .dhead .x {
+            color: #6d7175;
+            font-size: 18px;
+        }
+
+        .seg {
+            display: flex;
+            gap: 0;
+            border: 1px solid #8a8a8a;
+            border-radius: 8px;
+            overflow: hidden;
+            width: max-content;
+        }
+
+        .seg span {
+            padding: 6px 18px;
+            font-size: 12.5px;
+            background: #fff;
+            color: #505050;
+        }
+
+        .seg span.on {
+            background: #303030;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .seg span+span {
+            border-left: 1px solid #c9cccf;
+        }
+
+        .seg span.on+span,
+        .seg span:has(+ span.on) {
+            border-color: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="store"><span class="av">N</span> North &amp; Loom</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M3 9l7-6 7 6v8a1 1 0 0 1-1 1h-4v-6H8v6H4a1 1 0 0 1-1-1z" />
+            </svg>Home</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M6 4h8l-1 7H7L6 4zM4 4h2M8 15h4M8.5 17h3" />
+            </svg>Orders</div>
+        <div class="nav active"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4 7l6-3 6 3-6 3-6-3zM4 7v6l6 3 6-3V7" />
+            </svg>Products</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <circle cx="10" cy="7" r="3" />
+                <path d="M3 17c0-3.3 3.1-5 7-5s7 1.7 7 5" />
+            </svg>Customers</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4 5h12v10H4zM4 8h12" />
+            </svg>Content</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M4 14V6M8 14V9M12 14V4M16 14v-3" />
+            </svg>Analytics</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M3 10l4 4 10-10" />
+            </svg>Marketing</div>
+        <div class="nav"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6">
+                <path d="M10 3v14M4 7h9a3 3 0 0 1 0 6H7a3 3 0 0 1 0-6" />
+            </svg>Discounts</div>
+        <div class="nav-sep"></div>
+        <div class="nav" style="font-weight:640;color:#303030"><svg class="ic" viewBox="0 0 20 20" fill="none" stroke="#9a3412" stroke-width="1.8">
+                <rect x="3" y="4" width="14" height="12" rx="2" />
+                <path d="M7 8h6M7 11h4" />
+            </svg>Tablely</div>
+        <div class="side-foot">Sandbox · plan: Pro</div>
+    </div>
+
+    <div class="main">
+        <div class="topbar">
+            <span class="crumb">Products / <b>Washed Linen Overshirt</b></span>
+            <span class="search"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <circle cx="9" cy="9" r="6" />
+                    <path d="M14 14l3.5 3.5" />
+                </svg>Search</span>
+        </div>
+        <div class="appnav">
+            <div class="brand"><span class="brandmark"></span><span class="brandname">Tablely</span></div>
+            <span class="tab">Overview</span>
+            <span class="tab on">Tables</span>
+            <span class="tab">Wholesale</span>
+            <span class="tab">Design</span>
+            <span class="tab">Help</span>
+        </div>
+        <div class="content">
+            <div class="frow" style="justify-content:space-between">
+                <span class="ptitle">Order tables</span>
+                <span class="btn plain">View product</span>
+            </div>
+            <div class="sec" style="flex:1">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Product</th>
+                            <th>Status</th>
+                            <th>Layout</th>
+                            <th>Variant rules</th>
+                            <th>Min. order</th>
+                            <th>Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="background:#f4f0e9;box-shadow: inset 3px 0 0 #9a3412">
+                            <td><span class="thumb" style="background:#efe8dd"><svg viewBox="0 0 20 20" fill="none" stroke="#8a7a5e" stroke-width="1.4">
+                                        <path d="M7 4l-3 2 1.5 3L7 8v8h6V8l1.5 1L16 6l-3-2c-.5 1-1.5 1.4-3 1.4S7.5 5 7 4z" />
+                                    </svg></span></td>
+                            <td>
+                                <div class="pname"><span class="pl">Washed Linen Overshirt</span><span class="ph">10 variants</span></div>
+                            </td>
+                            <td><span class="badge success">Active</span></td>
+                            <td>Table</td>
+                            <td><b>10 rules</b></td>
+                            <td>$200.00</td>
+                            <td>Oct 14, 2026</td>
+                        </tr>
+                        <tr>
+                            <td><span class="thumb" style="background:#e7ecf0"><svg viewBox="0 0 20 20" fill="none" stroke="#5f7688" stroke-width="1.4">
+                                        <path d="M4 5h12v11H4z" />
+                                        <path d="M4 8h12" />
+                                    </svg></span></td>
+                            <td>
+                                <div class="pname"><span class="pl">Merino Ribbed Beanie</span><span class="ph">6 variants</span></div>
+                            </td>
+                            <td><span class="badge success">Active</span></td>
+                            <td>Grid</td>
+                            <td>6 rules</td>
+                            <td>Not set</td>
+                            <td>Oct 11, 2026</td>
+                        </tr>
+                        <tr>
+                            <td><span class="thumb" style="background:#efe9e0"><svg viewBox="0 0 20 20" fill="none" stroke="#8a7358" stroke-width="1.4">
+                                        <path d="M6 3h8l2 5-6 9-6-9z" />
+                                    </svg></span></td>
+                            <td>
+                                <div class="pname"><span class="pl">Heavyweight Cotton Tee</span><span class="ph">12 variants</span></div>
+                            </td>
+                            <td><span class="badge success">Active</span></td>
+                            <td>Matrix</td>
+                            <td>12 rules</td>
+                            <td>$150.00</td>
+                            <td>Oct 9, 2026</td>
+                        </tr>
+                        <tr>
+                            <td><span class="thumb" style="background:#ede7dd"><svg viewBox="0 0 20 20" fill="none" stroke="#7d7466" stroke-width="1.4">
+                                        <path d="M5 8c0-3 2-5 5-5s5 2 5 5v9H5z" />
+                                    </svg></span></td>
+                            <td>
+                                <div class="pname"><span class="pl">Waxed Canvas Tote</span><span class="ph">3 variants</span></div>
+                            </td>
+                            <td><span class="badge neutral">Hidden</span></td>
+                            <td>List</td>
+                            <td>Not set</td>
+                            <td>Not set</td>
+                            <td>Sep 30, 2026</td>
+                        </tr>
+                        <tr>
+                            <td><span class="thumb" style="background:#e8ece6"><svg viewBox="0 0 20 20" fill="none" stroke="#5e6f55" stroke-width="1.4">
+                                        <path d="M7 4l-3 2 1.5 3L7 8v8h6V8l1.5 1L16 6l-3-2c-.5 1-1.5 1.4-3 1.4S7.5 5 7 4z" />
+                                    </svg></span></td>
+                            <td>
+                                <div class="pname"><span class="pl">Chore Coat — Recycled Wool</span><span class="ph">8 variants</span></div>
+                            </td>
+                            <td><span class="badge warning">Draft</span></td>
+                            <td>Table</td>
+                            <td>2 rules</td>
+                            <td>Not set</td>
+                            <td>Sep 24, 2026</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="scrim" style="background:rgba(0,0,0,.28)"></div>
+    <div class="drawer">
+        <div class="dhead">
+            <span style="font-size:16px;font-weight:700;color:#1a1a1a">Order table settings</span>
+            <span class="x">✕</span>
+        </div>
+        <div class="dbody">
+            <div class="dbox blank">
+                <div class="pcell">
+                    <span class="thumb" style="width:40px;height:40px;background:#efe8dd"><svg viewBox="0 0 20 20" fill="none" stroke="#8a7a5e"
+                            stroke-width="1.4">
+                            <path d="M7 4l-3 2 1.5 3L7 8v8h6V8l1.5 1L16 6l-3-2c-.5 1-1.5 1.4-3 1.4S7.5 5 7 4z" />
+                        </svg></span>
+                    <div class="pname"><span style="font-size:13.5px;font-weight:650;color:#1a1a1a">Washed Linen Overshirt</span><span class="ph">10 variants ·
+                            $34.00</span></div>
+                </div>
+            </div>
+
+            <div class="crow" style="gap:10px">
+                <span class="cbox on"></span>
+                <span style="font-size:13.5px;font-weight:600">Show the order table on this product</span>
+            </div>
+
+            <div class="field" style="gap:6px">
+                <span class="flabel">Layout</span>
+                <div class="seg"><span class="on">Table</span><span>Grid</span><span>List</span><span>Matrix</span></div>
+            </div>
+
+            <div class="field" style="gap:6px">
+                <span class="flabel">Minimum order amount</span>
+                <div class="input" style="width:180px">$ 200.00</div>
+            </div>
+
+            <div class="dbox" style="gap:10px">
+                <div class="dtitle">
+                    <div class="frow"><span class="strong">Variant quantity rules</span><span class="pro">PRO</span></div>
+                    <span class="btn plain" style="font-size:12px;padding:0 6px;height:auto">Save as template</span>
+                </div>
+                <span class="hint">Set a minimum, maximum and step for each variant. Leave max blank for no limit.</span>
+                <table class="rules">
+                    <thead>
+                        <tr>
+                            <th>Variant</th>
+                            <th style="width:64px">Min</th>
+                            <th style="width:86px">Max</th>
+                            <th style="width:64px">Step</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#d8c4a3"></span>Sand / S</span></td>
+                            <td><input value="6"></td>
+                            <td><input value="144"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#d8c4a3"></span>Sand / M</span></td>
+                            <td><input value="6"></td>
+                            <td><input value="96"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#d8c4a3"></span>Sand / L</span></td>
+                            <td><input value="6"></td>
+                            <td><input value="60"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#d8c4a3"></span>Sand / XL</span></td>
+                            <td><input value="6"></td>
+                            <td><input value="24"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#a9744f"></span>Clay / S</span></td>
+                            <td><input value="6"></td>
+                            <td><input class="empty" value="No limit"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#a9744f"></span>Clay / M</span></td>
+                            <td><input value="6"></td>
+                            <td><input class="empty" value="No limit"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                        <tr>
+                            <td><span class="variant"><span class="vsw" style="background:#56604f"></span>Forest / L</span></td>
+                            <td><input value="12"></td>
+                            <td><input value="48"></td>
+                            <td><input value="6"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="dfoot">
+            <span></span>
+            <div class="frow"><span class="btn plain">Discard</span><span class="btn primary">Save</span></div>
+        </div>
+    </div>
+</body>
+
+</html>

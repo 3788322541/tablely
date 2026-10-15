@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tablely demo composer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 1600px;
+            height: 900px;
+            overflow: hidden;
+            background: #0f1115;
+            font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+        }
+
+        #stage {
+            position: relative;
+            width: 1600px;
+            height: 900px;
+            overflow: hidden;
+        }
+
+        .scene {
+            position: absolute;
+            inset: 0;
+            width: 1600px;
+            height: 900px;
+            border: 0;
+            opacity: 0;
+            pointer-events: none;
+            background: #fff;
+        }
+
+        /* highlight rings */
+        .hl {
+            position: absolute;
+            border: 3px solid #EA580C;
+            border-radius: 12px;
+            box-shadow: 0 0 0 4px rgba(234, 88, 12, .18), 0 0 22px rgba(234, 88, 12, .35);
+            opacity: 0;
+            pointer-events: none;
+            z-index: 30;
+            transition: none;
+        }
+
+        /* callouts */
+        .call {
+            position: absolute;
+            max-width: 470px;
+            background: rgba(255, 255, 255, .97);
+            border: 1px solid rgba(0, 0, 0, .08);
+            border-radius: 14px;
+            padding: 14px 20px;
+            box-shadow: 0 12px 34px rgba(15, 17, 21, .22);
+            z-index: 40;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .call .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #EA580C;
+            margin-right: 10px;
+            vertical-align: 2px;
+        }
+
+        .call .txt {
+            display: inline;
+            font-size: 22px;
+            line-height: 1.35;
+            font-weight: 600;
+            color: #1F2937;
+            letter-spacing: .1px;
+        }
+
+        /* cursor */
+        #cur {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 26px;
+            height: 26px;
+            z-index: 60;
+            opacity: 0;
+            pointer-events: none;
+            filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35));
+            transform: translate(-2px, -2px);
+            transform-origin: top left;
+        }
+
+        #ripple {
+            position: absolute;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 3px solid #EA580C;
+            z-index: 55;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* brand cards */
+        .card {
+            position: absolute;
+            inset: 0;
+            z-index: 70;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            opacity: 0;
+            background: linear-gradient(135deg, #9A3412 0%, #C2410C 52%, #EA580C 100%);
+        }
+
+        .logo-card {
+            width: 132px;
+            height: 132px;
+            border-radius: 30px;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 18px 44px rgba(0, 0, 0, .28);
+            margin-bottom: 34px;
+        }
+
+        .logo-card svg {
+            width: 84px;
+            height: 84px;
+        }
+
+        .word {
+            font-size: 76px;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+        }
+
+        .tagline {
+            margin-top: 14px;
+            font-size: 27px;
+            font-weight: 500;
+            opacity: .95;
+        }
+
+        .pills {
+            margin-top: 40px;
+            display: flex;
+            gap: 14px;
+        }
+
+        .pill {
+            border: 1.5px solid rgba(255, 255, 255, .55);
+            border-radius: 999px;
+            padding: 10px 22px;
+            font-size: 19px;
+            font-weight: 600;
+        }
+
+        .endpills {
+            flex-direction: column;
+            gap: 18px;
+            margin-top: 36px;
+        }
+
+        .endpills .pill {
+            font-size: 22px;
+            padding: 13px 30px;
+        }
+
+        .fade-bar {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 90px;
+            z-index: 25;
+            background: linear-gradient(180deg, rgba(15, 17, 21, .28), transparent);
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="stage">
+        <iframe class="scene" id="s1" src="shot1-table.html" scrolling="no"></iframe>
+        <iframe class="scene" id="s2" src="shot2-matrix.html" scrolling="no"></iframe>
+        <iframe class="scene" id="s3" src="shot3-success.html" scrolling="no"></iframe>
+        <iframe class="scene" id="s4" src="shot4-oos.html" scrolling="no"></iframe>
+        <iframe class="scene" id="s5" src="shot5-rules.html" scrolling="no"></iframe>
+        <iframe class="scene" id="s6" src="shot6-applications.html" scrolling="no"></iframe>
+        <div class="fade-bar" id="fadebar"></div>
+        <div id="hlayer"></div>
+        <div id="clayer"></div>
+        <div id="ripple"></div>
+        <svg id="cur" viewBox="0 0 24 24">
+            <path d="M3 2l7.5 18 2.6-7.6L20.7 10z" fill="#fff" stroke="#1f2937" stroke-width="1.4" stroke-linejoin="round" />
+        </svg>
+        <div class="card" id="title">
+            <div class="logo-card">
+                <svg viewBox="0 0 64 64" fill="none">
+                    <rect x="8" y="6" width="48" height="52" rx="7" fill="#fff" stroke="#F1D9C4" stroke-width="2" />
+                    <line x1="16" y1="20" x2="48" y2="20" stroke="#C2410C" stroke-width="3.4" stroke-linecap="round" />
+                    <line x1="16" y1="32" x2="42" y2="32" stroke="#EA580C" stroke-width="3.4" stroke-linecap="round" />
+                    <line x1="16" y1="44" x2="46" y2="44" stroke="#F97316" stroke-width="3.4" stroke-linecap="round" />
+                    <circle cx="50" cy="44" r="4.6" fill="#C2410C" />
+                </svg>
+            </div>
+            <div class="word">Tablely</div>
+            <div class="tagline">Bulk order form for wholesale buyers</div>
+            <div class="pills">
+                <span class="pill">Variant tables</span>
+                <span class="pill">Case-pack rules</span>
+                <span class="pill">Wholesale access</span>
+            </div>
+        </div>
+        <div class="card" id="end">
+            <div class="logo-card">
+                <svg viewBox="0 0 64 64" fill="none">
+                    <rect x="8" y="6" width="48" height="52" rx="7" fill="#fff" stroke="#F1D9C4" stroke-width="2" />
+                    <line x1="16" y1="20" x2="48" y2="20" stroke="#C2410C" stroke-width="3.4" stroke-linecap="round" />
+                    <line x1="16" y1="32" x2="42" y2="32" stroke="#EA580C" stroke-width="3.4" stroke-linecap="round" />
+                    <line x1="16" y1="44" x2="46" y2="44" stroke="#F97316" stroke-width="3.4" stroke-linecap="round" />
+                    <circle cx="50" cy="44" r="4.6" fill="#C2410C" />
+                </svg>
+            </div>
+            <div class="word">Tablely</div>
+            <div class="tagline">Every variant, one table, one click</div>
+            <div class="pills endpills">
+                <span class="pill">Table, grid, list and matrix layouts</span>
+                <span class="pill">Per-variant minimums, steps and stock limits</span>
+                <span class="pill">Wholesale applications and gated pricing</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+        const smooth = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        const lerp = (a, b, t) => a + (b - a) * t;
+        const ease = (t) => smooth(clamp(t, 0, 1));
+
+        // ---------- scene definition ----------
+        // coordinates filled from live iframes at load
+        const SCENES = [
+            { id: 's1', start: 4, end: 20 },
+            { id: 's2', start: 20, end: 32 },
+            { id: 's3', start: 32, end: 44 },
+            { id: 's4', start: 44, end: 53 },
+            { id: 's5', start: 53, end: 68 },
+            { id: 's6', start: 68, end: 80 },
+        ];
+        const DURATION = 86;
+        const XFADE = .55;
+
+        // timeline (x/y in stage coordinates)
+        const CALLS = [
+            // s1
+            { scene: 's1', t0: 5.0, t1: 9.4, x: 1080, y: 356, text: 'Every variant in one order table' },
+            { scene: 's1', t0: 10.2, t1: 14.4, x: 970, y: 640, text: 'Enter quantities with minimums and case-pack steps' },
+            { scene: 's1', t0: 15.4, t1: 19.6, x: 905, y: 772, text: 'Add the whole order to the cart at once' },
+            // s2
+            { scene: 's2', t0: 21.0, t1: 25.2, x: 560, y: 250, text: 'Or switch to a colour × size matrix' },
+            { scene: 's2', t0: 26.2, t1: 30.8, x: 1010, y: 560, text: 'Sold-out combinations are marked automatically' },
+            // s3
+            { scene: 's3', t0: 32.9, t1: 37.2, x: 1090, y: 282, text: 'One click adds every line' },
+            { scene: 's3', t0: 37.9, t1: 43.2, x: 1085, y: 500, text: 'The full order lands in the cart drawer' },
+            // s4
+            { scene: 's4', t0: 44.8, t1: 49.0, x: 1090, y: 282, text: 'Invalid quantities are blocked before checkout' },
+            { scene: 's4', t0: 49.6, t2: 52.6, x: 960, y: 700, text: 'Minimums, steps and stock are always respected' },
+            // s5
+            { scene: 's5', t0: 54.2, t1: 58.6, x: 720, y: 470, text: 'Set minimums, maximums and steps per variant' },
+            { scene: 's5', t0: 59.3, t1: 63.4, x: 1030, y: 140, text: 'Table, grid, list or matrix layout' },
+            { scene: 's5', t0: 64.0, t1: 67.4, x: 980, y: 690, text: 'Case-pack steps and stock limits — Pro' },
+            // s6
+            { scene: 's6', t0: 69.0, t1: 73.2, x: 250, y: 160, text: 'Review distributor applications' },
+            { scene: 's6', t0: 73.9, t1: 78.6, x: 360, y: 700, text: 'Approve or reject in one click' },
+        ];
+        CALLS.forEach(c => { if (c.t2) c.t1 = c.t2; });
+
+        const HLS = [
+            // scene, selector list -> one big rect, fade in/out
+            { scene: 's1', sel: ['.qty'], pad: 10, t0: 10.2, t1: 14.4 },
+            { scene: 's1', sel: ['.submit'], pad: 8, t0: 15.6, t1: 19.2 },
+            { scene: 's2', sel: ['.mx-oos'], pad: 12, t0: 26.2, t1: 30.6 },
+            { scene: 's3', sel: ['.feedback'], pad: 10, t0: 32.9, t1: 37.0 },
+            { scene: 's3', sel: ['.cont'], pad: 10, t0: 37.9, t1: 43.0 },
+            { scene: 's4', sel: ['.err-banner'], pad: 10, t0: 44.8, t1: 48.8 },
+            { scene: 's4', sel: ['.row-msg'], pad: 10, t0: 49.6, t1: 52.4 },
+            { scene: 's5', sel: ['.rules'], pad: 12, t0: 54.2, t1: 58.4 },
+            { scene: 's5', sel: ['.seg'], pad: 10, t0: 59.3, t1: 63.2 },
+            { scene: 's6', sel: ['.btn.primary'], idx: 0, pad: 8, t0: 73.9, t1: 78.2 },
+        ];
+
+        // cursor keyframes [{t, x, y}] ; clicks ripple at given t
+        const PATH = [
+            [5.2, 1250, 430], [6.6, 1403, 490], [8.2, 1403, 490],
+            [10.6, 1403, 559], [12.2, 1403, 628], [13.8, 1390, 640],
+            [15.6, 1440, 780], [16.7, 1466, 839],
+            [18.2, 1466, 839],
+            // s2
+            [21.4, 620, 330], [23.0, 911, 341], [24.6, 1164, 341], [26.4, 850, 500], [27.6, 911, 532],
+            [30.8, 1180, 660],
+            // s3
+            [33.2, 1200, 420], [35.4, 1180, 347],
+            [38.4, 1330, 560], [40.2, 1330, 700], [42.4, 1360, 800],
+            // s4
+            [45.4, 1200, 347], [48.4, 1300, 360],
+            [50.0, 1300, 538], [51.6, 1280, 678],
+            // s5
+            [54.6, 1180, 470], [56.4, 1213, 532], [57.8, 1213, 612],
+            [59.8, 1140, 213], [61.4, 1230, 213],
+            [64.6, 1200, 560], [66.4, 1240, 640],
+            // s6
+            [69.6, 800, 236], [72.2, 920, 235],
+            [74.4, 980, 235], [76.2, 1002, 235],
+        ];
+        const CLICKS = [{ t: 16.9, x: 1466, y: 839 }, { t: 27.8, x: 911, y: 532 }, { t: 76.4, x: 1002, y: 235 }];
+
+        // ---------- build DOM ----------
+        const hlayer = document.getElementById('hlayer');
+        const clayer = document.getElementById('clayer');
+        const cursor = document.getElementById('cur');
+        const ripple = document.getElementById('ripple');
+        const titleEl = document.getElementById('title');
+        const endEl = document.getElementById('end');
+        const fadebar = document.getElementById('fadebar');
+
+        CALLS.forEach(c => {
+            const d = document.createElement('div'); d.className = 'call';
+            d.innerHTML = '<span class="dot"></span><span class="txt"></span>';
+            d.querySelector('.txt').textContent = c.text;
+            clayer.appendChild(d); c.el = d;
+        });
+        HLS.forEach(h => {
+            const d = document.createElement('div'); d.className = 'hl';
+            hlayer.appendChild(d); h.el = d;
+        });
+
+        function sceneAt(t) {
+            if (t < 4) return null;
+            if (t >= 80) return null;
+            for (const s of SCENES) { if (t >= s.start && t < s.end) return s; }
+            return null;
+        }
+        function sceneOpacity(scene, t) {
+            if (!scene) return 0;
+            const s = SCENES.find(x => x.id === scene);
+            let a = 1;
+            if (t < s.start + XFADE) a = (t - s.start) / XFADE;
+            if (t > s.end - XFADE) a = Math.max(0, (s.end - t) / XFADE);
+            return clamp(a, 0, 1);
+        }
+        function callOpacity(c, t) {
+            const inn = .32, out = .3;
+            if (t < c.t0 || t > c.t1) return 0;
+            if (t < c.t0 + inn) return (t - c.t0) / inn;
+            if (t > c.t1 - out) return (c.t1 - t) / out;
+            return 1;
+        }
+        function cursorAt(t) {
+            // find segment; cursor visible 5.0..79.4
+            if (t < 5 || t > 79.6) return null;
+            let a = PATH[0];
+            for (let i = 0; i < PATH.length - 1; i++) {
+                if (t >= PATH[i][0] && t <= PATH[i + 1][0]) {
+                    const p = (t - PATH[i][0]) / (PATH[i + 1][0] - PATH[i][0]);
+                    return { x: lerp(PATH[i][1], PATH[i + 1][1], ease(p)), y: lerp(PATH[i][2], PATH[i + 1][2], ease(p)) };
+                }
+            }
+            return { x: PATH[PATH.length - 1][1], y: PATH[PATH.length - 1][2] };
+        }
+
+        // measure highlight rects inside iframes
+        function measure() {
+            HLS.forEach(h => {
+                const frame = document.getElementById(h.scene);
+                const doc = frame.contentDocument; if (!doc) return;
+                let els = h.sel.flatMap(s => [...doc.querySelectorAll(s)]);
+                if (typeof h.idx === 'number') els = [els[h.idx]];
+                if (!els.length) return;
+                const r0 = els[0].getBoundingClientRect();
+                let x1 = r0.left, y1 = r0.top, x2 = r0.right, y2 = r0.bottom;
+                els.forEach(e => { const r = e.getBoundingClientRect(); x1 = Math.min(x1, r.left); y1 = Math.min(y1, r.top); x2 = Math.max(x2, r.right); y2 = Math.max(y2, r.bottom); });
+                h.x = x1 - h.pad; h.y = y1 - h.pad; h.w = (x2 - x1) + h.pad * 2; h.h = (y2 - y1) + h.pad * 2;
+            });
+            window.__ready = true;
+        }
+        let readyCount = 0;
+        SCENES.forEach(s => {
+            const f = document.getElementById(s.id);
+            f.addEventListener('load', () => {
+                try { f.contentDocument.body.style.overflow = 'hidden'; } catch (e) { }
+                readyCount++;
+                if (readyCount === SCENES.length) { setTimeout(measure, 150); }
+            });
+        });
+        setTimeout(() => { try { measure(); } catch (e) { } }, 2500);
+
+        window.__seek = function (t) {
+            t = clamp(t, 0, DURATION);
+            SCENES.forEach(s => {
+                document.getElementById(s.id).style.opacity = sceneOpacity(s.id, t);
+            });
+            // brand cards
+            titleEl.style.opacity = t < 0.5 ? 1 : t > 4.0 ? clamp((4.55 - t) / .55, 0, 1) : 1;
+            endEl.style.opacity = t < 79.7 ? clamp((t - 79.7) / .55, 0, 1) : 1;
+            fadebar.style.opacity = (t >= 4 && t <= 80) ? .55 * sceneOpacity(sceneAt(t)?.id, t) : 0;
+            // callouts
+            CALLS.forEach(c => {
+                const a = callOpacity(c, t);
+                c.el.style.opacity = a;
+                if (a > 0) {
+                    c.el.style.display = 'block';
+                    c.el.style.left = c.x + 'px'; c.el.style.top = c.y + 'px';
+                    c.el.style.transform = `translateY(${6 * (1 - a)}px)`;
+                } else c.el.style.display = 'none';
+            });
+            // highlights
+            HLS.forEach(h => {
+                if (typeof h.x !== 'number') { h.el.style.opacity = 0; return; }
+                const a = callOpacity(h, t);
+                h.el.style.opacity = a * (.55 + .45 * Math.sin(t * 4.5));
+                h.el.style.left = h.x + 'px'; h.el.style.top = h.y + 'px';
+                h.el.style.width = h.w + 'px'; h.el.style.height = h.h + 'px';
+            });
+            // cursor
+            const cp = cursorAt(t);
+            if (cp) {
+                cursor.style.opacity = 1;
+                const click = CLICKS.find(c => Math.abs(t - c.t) < .22);
+                const sc = click ? 1 - 0.25 * (1 - Math.abs(t - click.t) / .22) : 1;
+                cursor.style.transform = `translate(${cp.x - 2}px,${cp.y - 2}px) scale(${sc})`;
+            } else cursor.style.opacity = 0;
+            // ripples
+            let rp = null;
+            for (const c of CLICKS) { if (t >= c.t && t <= c.t + .7) { rp = { c, p: 1 - (t - c.t) / .7 }; break; } }
+            if (rp) {
+                const k = 1 + rp.p * 2.2;
+                ripple.style.opacity = rp.p;
+                ripple.style.left = (rp.c.x - 13 - (k - 1) * 13) + 'px';
+                ripple.style.top = (rp.c.y - 4 - (k - 1) * 13) + 'px';
+                ripple.style.transform = `scale(${k})`;
+            } else ripple.style.opacity = 0;
+        };
+        window.__seek(0);
+        window.__DURATION = DURATION;
+    </script>
+</body>
+
+</html>
