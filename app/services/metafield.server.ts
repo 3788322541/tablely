@@ -40,6 +40,8 @@ import {
 
 /** metafield namespace（两份 metafield 共用；**不是** `$app:` 前缀，见文件头说明） */
 export const NAMESPACE = "tablely";
+/** app-owned namespace（Liquid fallback 路径用这个） — 和 Linkly 的 `$app:linkly` 架构一致 */
+export const APP_OWNED_NAMESPACE = "$app:tablely";
 export const TABLE_KEY = "table";
 export const SETTINGS_KEY = "settings";
 
@@ -543,7 +545,15 @@ function throwOnUserErrors(
     );
 }
 
-/** 写入一份 json metafield（owner 由 `ownerId` 决定：Shop 或 Product） */
+/** 写入一份 json metafield（owner 由 `ownerId` 决定：Shop 或 Product）
+ *
+ * 同时写 **两个 namespace**：
+ *   - plain `tablely`（主路径 — Liquid 读 `shop.metafields.tablely.settings`）
+ *   - app-prefixed `$app:tablely`（Liquid fallback 路径 — 读 `app.metafields.tablely.settings`
+ *     或 `product.metafields['app--<id>--tablely'].table`）
+ *
+ * 这样 ensureMetafieldDefinitions 创建失败时，Liquid fallback 也能兜底。
+ */
 async function setJsonMetafield(
     admin: GraphqlAdmin,
     input: { ownerId: string; key: string; value: string },
@@ -552,9 +562,18 @@ async function setJsonMetafield(
     const res = await admin.graphql(SET_METAFIELDS_MUTATION, {
         variables: {
             metafields: [
+                // 主路径（plain namespace + PUBLIC_READ definition）
                 {
                     ownerId: input.ownerId,
                     namespace: NAMESPACE,
+                    key: input.key,
+                    type: "json",
+                    value: input.value,
+                },
+                // fallback 路径（app-owned，不需 definition，shopify 自动可见）
+                {
+                    ownerId: input.ownerId,
+                    namespace: APP_OWNED_NAMESPACE,
                     key: input.key,
                     type: "json",
                     value: input.value,
