@@ -12,7 +12,7 @@ type AppEntry = {
   handle: string;          // App Store slug
   name: string;            // Display name
   tagline: string;         // Short value prop (kept under 40 chars)
-  icon: string;            // Single emoji as visual badge
+  logo: string;            // Square app icon URL (from Shopify App Store og:image)
   color: string;           // Accent color hex
   category: string;         // Short category label
 };
@@ -23,7 +23,7 @@ export const PORTFOLIO: AppEntry[] = [
     handle: "attributly",
     name: "Attributly",
     tagline: "See which ads and UTM links bring real orders",
-    icon: "📈",
+    logo: "https://cdn.shopify.com/app-store/listing_images/e8969b3ffb042387dcb2b5f57b9430d2/icon/CN-L9d78ipcDEAE=.png",
     color: "#5B8DEF",
     category: "Analytics",
   },
@@ -31,7 +31,7 @@ export const PORTFOLIO: AppEntry[] = [
     handle: "tablely",
     name: "Tablely",
     tagline: "Bulk order form for wholesale — every variant in one table",
-    icon: "🧾",
+    logo: "https://cdn.shopify.com/app-store/listing_images/c2b794078d89681a15ccdfac1e50bf13/icon/CJO79LPbupcDEAE=.png",
     color: "#2AB674",
     category: "Wholesale",
   },
@@ -39,7 +39,7 @@ export const PORTFOLIO: AppEntry[] = [
     handle: "linkly-2",
     name: "Linkly",
     tagline: "Custom link buttons on product pages — lookbooks, size guides, affiliates",
-    icon: "🔗",
+    logo: "https://cdn.shopify.com/app-store/listing_images/c43edd7940fb6e43541d152e79067c84/icon/CJOGt_X1k5cDEAE=.png",
     color: "#F27B3B",
     category: "Store design",
   },
@@ -47,7 +47,7 @@ export const PORTFOLIO: AppEntry[] = [
     handle: "cartly-free-shipping-bar",
     name: "Cartly",
     tagline: "Real‑time free shipping progress bar that boosts AOV",
-    icon: "🚚",
+    logo: "https://cdn.shopify.com/app-store/listing_images/c30c5131ba8e4ede6e5756f0c08544a1/icon/CL3tvOfohJcDEAE=.png",
     color: "#7C5CFF",
     category: "Conversion",
   },
@@ -124,16 +124,23 @@ export default function MoreApps({ currentHandle }: Props) {
               el.style.boxShadow = "none";
             }}
           >
-            <div
+            <img
               aria-hidden
+              src={app.logo}
+              alt=""
+              width={48}
+              height={48}
+              loading="lazy"
               style={{
-                fontSize: "24px",
-                lineHeight: "1",
+                width: "48px",
+                height: "48px",
+                borderRadius: "10px",
                 flexShrink: 0,
+                objectFit: "cover",
+                background: "#fff",
+                border: "1px solid #E3E5E7",
               }}
-            >
-              {app.icon}
-            </div>
+            />
             <div style={{ minWidth: 0 }}>
               <div
                 style={{
