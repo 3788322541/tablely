@@ -61,7 +61,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     // 主主题 GID → 提取数字 ID，用于 Theme Editor deep link
-    // 注意：Shopify GraphQL `themes` field 不接受 role 参数 —— 拉全量后在前端 filter
+    // Shopify GraphQL `themes` field 从 2024-07 版本起已支持 role filter —— 
+    // 这里拉全量 + 前端 filter 更稳（不同 API 版本的向后兼容）
     let themeId: string | null = null;
     try {
         const res = await admin.graphql(
