@@ -60,7 +60,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         console.error("[tablely] design preview url failed:", error);
     }
 
-    return { locale, settings, previewUrl, plan };
+    // 主主题 GID → 提取数字 ID，用于 Theme Editor deep link
+    // 注意：Shopify GraphQL `themes` field 不接受 role 参数 —— 拉全量后在前端 filter
+    let themeId: string | null = null;
+    try {
+        const res = await admin.graphql(
+            "query { themes(first: 10) { nodes { id role } } }",
+        );
+        const json = await res.json();
+        const themes = (json.data?.themes?.nodes ?? []) as Array<{
+            id: string;
+            role: string;
+        }>;
+        const mainTheme = themes.find((t) => t.role === "MAIN");
+        if (mainTheme) themeId = mainTheme.id.split("/").pop() ?? null;
+    } catch (e) {
+        process.stderr.write(
+            "[tablely/design] themes query FAILED: " + (e as Error).message + "\n",
+        );
+    }
+
+    return { locale, settings, previewUrl, plan, themeId, storefrontHost: session.shop };
 };
 
 export const action = async ({
@@ -115,10 +135,17 @@ function ProHint({ label, upgrade }: { label: string; upgrade: string }) {
 }
 
 export default function DesignPage() {
-    const { locale, settings, previewUrl, plan } = useLoaderData<typeof loader>();
+    const { locale, settings, previewUrl, plan, themeId, storefrontHost } =
+        useLoaderData<typeof loader>();
     const t = getT(locale);
     const shopify = useAppBridge();
     const fetcher = useFetcher<typeof action>();
+
+    // Theme Editor deep link：去掉 .myshopify.com 得到 store handle
+    const storeHandle = storefrontHost.replace(/\.myshopify\.com$/, "");
+    const themeEditorUrl = themeId
+        ? `https://admin.shopify.com/store/${storeHandle}/themes/${themeId}/editor?target=app:tablely-1`
+        : null;
 
     const canCustomStyle = hasFeature(plan, "custom_style");
     const canOutOfStock = hasFeature(plan, "out_of_stock");
@@ -274,8 +301,30 @@ export default function DesignPage() {
             </s-section>
 
             <s-section heading={t("design.advanced")}>
-                <s-stack direction="block" gap="base">
-                    <s-switch
+                <s-stack direction="block" gap="large">
+                    {/* Theme Extension 引导：一键跳转 Theme Editor connect Tablely */}
+                    {themeEditorUrl ? (
+                        <s-stack direction="block" gap="base">
+                            <s-text type="strong">
+                                {t("design.advanced.themeExt.title")}
+                            </s-text>
+                            <s-text color="subdued">
+                                {t("design.advanced.themeExt.hint")}
+                            </s-text>
+                            <s-stack
+                                direction="inline"
+                                gap="base"
+                                alignItems="center"
+                            >
+                                <s-button href={themeEditorUrl} target="_blank">
+                                    {t("design.advanced.themeExt.cta")}
+                                </s-button>
+                            </s-stack>
+                        </s-stack>
+                    ) : null}
+
+                    <s-stack direction="block" gap="base">
+                        <s-switch
                         label={t("design.hideNative")}
                         checked={hideNative}
                         onChange={(event) => setHideNative(checkedOf(event))}
@@ -332,6 +381,7 @@ export default function DesignPage() {
                     <s-text color="subdued">
                         <s-link href="/app/help">{t("design.advancedHelp")}</s-link>
                     </s-text>
+                </s-stack>
                 </s-stack>
             </s-section>
 
