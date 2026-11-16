@@ -15,7 +15,7 @@ embedded = true
 # write_discounts：自动折扣（阶梯价 / 批发价 / Mix & Match，§2.2）—— Function 改结算价，必须真实生效
 # write_cart_transforms：Cart Transform（行内改价 / 组合行，§2.2）
 # 零 PCD：不申请任何 customers 写权限；门控只读 Liquid 侧的 customer.tags（§2.4）
-scopes = "read_products,write_products,write_discounts,write_cart_transforms"
+scopes = "read_products,write_products,write_discounts,write_cart_transforms,offline_access"
 
 [webhooks]
 api_version = "2026-10"
