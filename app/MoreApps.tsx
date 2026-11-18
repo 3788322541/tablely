@@ -43,14 +43,6 @@ export const PORTFOLIO: AppEntry[] = [
     color: "#F27B3B",
     category: "Store design",
   },
-  {
-    handle: "cartly-free-shipping-bar",
-    name: "Cartly",
-    tagline: "Real‑time free shipping progress bar that boosts AOV",
-    logo: "https://cdn.shopify.com/app-store/listing_images/c30c5131ba8e4ede6e5756f0c08544a1/icon/CL3tvOfohJcDEAE=.png",
-    color: "#7C5CFF",
-    category: "Conversion",
-  },
 ];
 
 // App Store install URL — merchant clicks this → direct install flow
