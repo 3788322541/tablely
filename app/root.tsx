@@ -1,5 +1,4 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
-import MoreApps from "./MoreApps";
 
 export default function App() {
   return (
@@ -17,7 +16,6 @@ export default function App() {
       </head>
       <body>
         <Outlet />
-        <MoreApps currentHandle="tablely" />
         <ScrollRestoration />
         <Scripts />
       </body>

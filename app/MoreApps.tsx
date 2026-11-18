@@ -43,14 +43,6 @@ export const PORTFOLIO: AppEntry[] = [
     color: "#F27B3B",
     category: "Store design",
   },
-  {
-    handle: "cartly-free-shipping-bar",
-    name: "Cartly",
-    tagline: "Real‑time free shipping progress bar that boosts AOV",
-    logo: "https://cdn.shopify.com/app-store/listing_images/c30c5131ba8e4ede6e5756f0c08544a1/icon/CL3tvOfohJcDEAE=.png",
-    color: "#7C5CFF",
-    category: "Conversion",
-  },
 ];
 
 // App Store install URL — merchant clicks this → direct install flow
@@ -67,9 +59,9 @@ export default function MoreApps({ currentHandle }: Props) {
     <section
       className="zhen-moreapps"
       style={{
-        margin: "24px 16px 40px",
-        padding: "16px",
-        borderRadius: "12px",
+        margin: "0",
+        padding: "12px",
+        borderRadius: "14px",
         border: "1px solid #E3E5E7",
         background: "#FAFBFC",
         fontFamily:
@@ -81,7 +73,7 @@ export default function MoreApps({ currentHandle }: Props) {
           fontSize: "13px",
           fontWeight: 600,
           color: "#6B7280",
-          marginBottom: "12px",
+          marginBottom: "10px",
           letterSpacing: "0.02em",
           textTransform: "uppercase",
         }}
@@ -93,7 +85,7 @@ export default function MoreApps({ currentHandle }: Props) {
         style={{
           display: "grid",
           gridTemplateColumns: `repeat(${others.length}, minmax(0, 1fr))`,
-          gap: "12px",
+          gap: "10px",
         }}
       >
         {others.map((app) => (
@@ -104,9 +96,9 @@ export default function MoreApps({ currentHandle }: Props) {
             rel="noopener noreferrer"
             style={{
               display: "flex",
-              gap: "12px",
+              gap: "10px",
               padding: "12px",
-              borderRadius: "8px",
+              borderRadius: "10px",
               border: "1px solid #E3E5E7",
               background: "#fff",
               textDecoration: "none",
@@ -128,12 +120,12 @@ export default function MoreApps({ currentHandle }: Props) {
               aria-hidden
               src={app.logo}
               alt=""
-              width={48}
-              height={48}
+              width={40}
+              height={40}
               loading="lazy"
               style={{
-                width: "48px",
-                height: "48px",
+                width: "40px",
+                height: "40px",
                 borderRadius: "10px",
                 flexShrink: 0,
                 objectFit: "cover",

@@ -6,6 +6,7 @@ import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 import { getT, localeFromRequest } from "../i18n";
 import { maybePlanDailySync } from "../services/billing.server";
+import MoreApps from "../MoreApps";
 
 /**
  * 后台框架 + 主导航（M1 脚手架，各页面在后续里程碑补齐）
@@ -45,6 +46,7 @@ export default function App() {
                 <s-link href="/app/help">{t("nav.help")}</s-link>
             </s-app-nav>
             <Outlet />
+            <MoreApps currentHandle="tablely" />
         </AppProvider>
     );
 }
