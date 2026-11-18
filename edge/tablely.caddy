@@ -1,4 +1,4 @@
-http://tablely.zhenjunit.com:8080 {
+tablely.zhenjunit.com {
 	encode gzip
 	handle_path /proof/* {
 		root * /srv/proof
