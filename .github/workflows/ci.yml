@@ -74,32 +74,32 @@ jobs:
           set -e
           npm audit --omit=dev --json > /tmp/audit.json
           # 过滤已知放行项，保留其余 high/critical 漏洞阻断
-          python3 - <<'PY'
-          import json, sys
-          d = json.load(open('/tmp/audit.json'))
-          SKIP = {"effect", "@prisma/config", "prisma", "@shopify/shopify-app-session-storage-prisma"}
-          bad = []
-          for name, info in d.get('vulnerabilities', {}).items():
-            if info.get('severity') not in ('high', 'critical'):
-              continue
-            # 只放行"全链路都在 SKIP 集内"的告警
-            if name in SKIP:
-              via_names = {
-                v['name'] if isinstance(v, dict) else v
-                for v in info.get('via', [])
-                if isinstance(v, dict)
+          # 用 Node 而不是 python3（ubuntu-latest 未必带），CI 里 Node 20 必然可用
+          node - <<'JS'
+          const fs = require('fs');
+          const d = JSON.parse(fs.readFileSync('/tmp/audit.json', 'utf8'));
+          const SKIP = new Set(['effect', '@prisma/config', 'prisma', '@shopify/shopify-app-session-storage-prisma']);
+          const bad = [];
+          for (const [name, info] of Object.entries(d.vulnerabilities || {})) {
+            if (!['high', 'critical'].includes(info.severity)) continue;
+            if (SKIP.has(name)) {
+              const viaNames = new Set(
+                (info.via || []).filter(v => typeof v === 'object').map(v => v.name)
+              );
+              if ([...viaNames].every(n => SKIP.has(n))) {
+                console.log(`[放行] ${name}: ${info.severity} — ${info.range || '?'} (已知误报，见 ci.yml §8.2 E 注释)`);
+                continue;
               }
-              if via_names.issubset(SKIP):
-                print(f"[放行] {name}: {info.get('severity')} — {info.get('range','?')} (已知误报，见 ci.yml §8.2 E 注释)")
-                continue
-            bad.append((name, info.get('severity'), info.get('range','?')))
-          if bad:
-            print("发现未放行的高危漏洞：")
-            for n, s, r in bad:
-              print(f"  {n}: {s} ({r})")
-            sys.exit(1)
-          print("audit 通过（放行 effect 已知误报）")
-          PY
+            }
+            bad.push({name, severity: info.severity, range: info.range || '?'});
+          }
+          if (bad.length) {
+            console.log('发现未放行的高危漏洞：');
+            for (const b of bad) console.log(`  ${b.name}: ${b.severity} (${b.range})`);
+            process.exit(1);
+          }
+          console.log('audit 通过（放行 effect 已知误报）');
+          JS
 
   function:
     name: function
