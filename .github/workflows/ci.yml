@@ -71,10 +71,10 @@ jobs:
       #     且 @prisma/config 仅处理本地 prisma 配置文件（非网络输入，ReDoS 不可达）。
       #     复核点：prisma 7.x 发布后移除 effect 依赖，或 effect 3.20~3.21 被正式 CVE 覆盖时。
       - run: |
-          set -e
-          npm audit --omit=dev --json > /tmp/audit.json
+          npm audit --omit=dev --json > /tmp/audit.json || true
           # 过滤已知放行项，保留其余 high/critical 漏洞阻断
           # 用 Node 而不是 python3（ubuntu-latest 未必带），CI 里 Node 20 必然可用
+          # 注意：npm audit 有漏洞时 exit 1，上面 || true 先吞掉让 JSON 文件落盘
           node - <<'JS'
           const fs = require('fs');
           const d = JSON.parse(fs.readFileSync('/tmp/audit.json', 'utf8'));
